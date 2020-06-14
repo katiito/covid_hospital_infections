@@ -1,7 +1,11 @@
 
+
+
+
 hospital_infectious <- function(){
     library(ggplot2)
     library(dplyr)
+    library(rriskDistributions)
     # # Number of days that a hospitalised person is infectious in the hospital
     # = MIN[ hospitalised duration, 
     #        MIN[0, (time to loss of infectiousness) - (time to hospital admission)]]
@@ -22,7 +26,10 @@ hospital_infectious <- function(){
     hospital_duration_mean = 7
     hospital_duration_k = 7
     
-    
+    # Fitting a Gamma Distribution to the van Kampen hospital study
+    g_out <- get.gamma.par(p = c(0.025, 0.5, 0.975), q = c(5, 8, 11),
+                           show.output = FALSE, plot = FALSE)
+
     
     latent_duration <- rgamma(num_samples, scale = latent_duration_mean/latent_duration_k, 
                                shape = latent_duration_k)
@@ -35,6 +42,7 @@ hospital_infectious <- function(){
     hospital_duration <- rgamma(num_samples, scale = hospital_duration_mean/hospital_duration_k, 
                                shape = hospital_duration_k)
     infectious_duration <- preclinical_duration + clinical_duration
+    infectious_duration_hospital <- rgamma(num_samples, scale = 1/g_out["rate"], shape =  g_out["shape"])
     
     infectious_duration_long_truncate <- sort(infectious_duration)[(0.95*num_samples):num_samples]
     infectious_duration_long <- sample(infectious_duration_long_truncate, num_samples, replace = TRUE)
@@ -43,6 +51,7 @@ hospital_infectious <- function(){
     time_to_hospital_admission <- latent_duration + preclinical_duration + hospital_delayfromonset
     time_to_lossofinfectiousness <- latent_duration + infectious_duration
     time_to_lossofinfectiousness_long <- latent_duration + infectious_duration_long
+    time_to_lossofinfectiousness_hospital <- latent_duration + infectious_duration_hospital
     
     ## calculate the time infectious after admitted to hosptial
     time_infectiousness_after_admission_unltd <- time_to_lossofinfectiousness - time_to_hospital_admission
@@ -52,6 +61,10 @@ hospital_infectious <- function(){
       time_infectiousness_after_admission_unltd_long <- time_to_lossofinfectiousness_long - time_to_hospital_admission
       time_infectiousness_after_admission_long <- pmax(0,time_infectiousness_after_admission_unltd_long)
     
+      # calculate this time assuming an infectious period as estimated for hosp cases
+      time_infectiousness_after_admission_unltd_hosp <- time_to_lossofinfectiousness_hospital - time_to_hospital_admission
+      time_infectiousness_after_admission_hosp <- pmax(0,time_infectiousness_after_admission_unltd_hosp)
+      
     
     ## calcualte number of days infectious within the hospital 
     number_days_infectious_in_hospital <- pmin(hospital_duration, time_infectiousness_after_admission)
@@ -61,6 +74,10 @@ hospital_infectious <- function(){
       number_days_infectious_in_hospital_long <- pmin(hospital_duration, time_infectiousness_after_admission_long)
       number_days_infectious_in_hospital_positive_long <- number_days_infectious_in_hospital_long[number_days_infectious_in_hospital_long>0.5]
     
+      # now under the assumption of a long duration of infectiousness
+      number_days_infectious_in_hospital_hosp <- pmin(hospital_duration, time_infectiousness_after_admission_hosp)
+      number_days_infectious_in_hospital_positive_hosp <- number_days_infectious_in_hospital_hosp[number_days_infectious_in_hospital_hosp>0.5]
+      
     ## calcualte statistics
     prob_infectious_in_hospital <- sum(number_days_infectious_in_hospital>0.5) / num_samples
     prop_infectious_days_in_hospitals <- sum(number_days_infectious_in_hospital) / sum(infectious_duration)
@@ -69,7 +86,10 @@ hospital_infectious <- function(){
       prob_infectious_in_hospital_long <- sum(number_days_infectious_in_hospital_long>0.5) / num_samples
       prop_infectious_days_in_hospitals_long <- sum(number_days_infectious_in_hospital_long) / sum(infectious_duration_long)
     
-    
+      # and for hosp duration infectious
+      prob_infectious_in_hospital_hosp <- sum(number_days_infectious_in_hospital_hosp>0.5) / num_samples
+      prop_infectious_days_in_hospitals_hosp <- sum(number_days_infectious_in_hospital_hosp) / sum(infectious_duration_hospital)
+      
     data_indpt <- bind_rows("not infectious delay" = as_tibble(time_to_lossofinfectiousness), 
                       "admission delay" = as_tibble(time_to_hospital_admission),
                       "days infectious in hosp" = as_tibble(number_days_infectious_in_hospital),
@@ -83,7 +103,15 @@ hospital_infectious <- function(){
                       "days | infectious in hosp" = as_tibble(number_days_infectious_in_hospital_positive_long), 
                       .id="variable")
     
-    data <- bind_rows("independent" = data_indpt, "upper 95%" = data_long, .id = "association")
+    data_hosp <- bind_rows("not infectious delay" = as_tibble(time_to_lossofinfectiousness_hospital), 
+                           "admission delay" = as_tibble(time_to_hospital_admission),
+                           "days infectious in hosp" = as_tibble(number_days_infectious_in_hospital_hosp),
+                           "days | infectious in hosp" = as_tibble(number_days_infectious_in_hospital_positive_hosp), 
+                           .id="variable")
+    
+    data <- bind_rows("independent" = data_indpt, 
+                      "upper 95%" = data_long,
+                      "hospital study" = data_hosp, .id = "association")
     names(data)[names(data) == "value"] <- "days"
     data$variable <- factor(data$variable, levels = c("not infectious delay",
                                             "admission delay",
@@ -105,6 +133,10 @@ hospital_infectious <- function(){
     
     cat("Assuming hospitalised cases are in upper 95% infectious duration", "\n") 
     cat("Prob of hospital case being infectious = ", round(prob_infectious_in_hospital_long,3), "\n") 
-    cat("Proportion of days spent infectious in hosp = ", round(prop_infectious_days_in_hospitals_long,3), "\n") 
+    cat("Proportion of days spent infectious in hosp = ", round(prop_infectious_days_in_hospitals_long,3), "\n\n") 
 
+    cat("Assuming hospitalised cases are as estimated in van Kampman", "\n") 
+    cat("Prob of hospital case being infectious = ", round(prob_infectious_in_hospital_hosp,3), "\n") 
+    cat("Proportion of days spent infectious in hosp = ", round(prop_infectious_days_in_hospitals_hosp,3), "\n") 
+    
 } 
