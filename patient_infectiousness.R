@@ -11,6 +11,8 @@ hospital_infectious <- function(){
     #        MIN[0, (time to loss of infectiousness) - (time to hospital admission)]]
     
     num_samples = 100000
+    
+    # estimates taken from Davies et al. https://www.medrxiv.org/content/10.1101/2020.04.01.20049908v1
     latent_duration_mean = 4
     latent_duration_k=4
     
@@ -27,6 +29,7 @@ hospital_infectious <- function(){
     hospital_duration_k = 7
     
     # Fitting a Gamma Distribution to the van Kampen hospital study
+    # https://www.medrxiv.org/content/10.1101/2020.06.08.20125310v1.full.pdf
     g_out <- get.gamma.par(p = c(0.025, 0.5, 0.975), q = c(5, 8, 11),
                            show.output = FALSE, plot = FALSE)
 
@@ -53,40 +56,40 @@ hospital_infectious <- function(){
     time_to_lossofinfectiousness_long <- latent_duration + infectious_duration_long
     time_to_lossofinfectiousness_hospital <- latent_duration + infectious_duration_hospital
     
-    ## calculate the time infectious after admitted to hosptial
+    ## 1a. calculate the time infectious after admitted to hosptial
     time_infectiousness_after_admission_unltd <- time_to_lossofinfectiousness - time_to_hospital_admission
     time_infectiousness_after_admission <- pmax(0,time_infectiousness_after_admission_unltd)
     
-      # calculate this time assuming a long infectious period for hosp cases
+      # 1b. calculate this time assuming a long infectious period for hosp cases
       time_infectiousness_after_admission_unltd_long <- time_to_lossofinfectiousness_long - time_to_hospital_admission
       time_infectiousness_after_admission_long <- pmax(0,time_infectiousness_after_admission_unltd_long)
     
-      # calculate this time assuming an infectious period as estimated for hosp cases
+      # 1c. calculate this time assuming an infectious period as estimated for hosp cases
       time_infectiousness_after_admission_unltd_hosp <- time_to_lossofinfectiousness_hospital - time_to_hospital_admission
       time_infectiousness_after_admission_hosp <- pmax(0,time_infectiousness_after_admission_unltd_hosp)
       
     
-    ## calcualte number of days infectious within the hospital 
+    ## 2a. calcualte number of days infectious within the hospital 
     number_days_infectious_in_hospital <- pmin(hospital_duration, time_infectiousness_after_admission)
     number_days_infectious_in_hospital_positive <- number_days_infectious_in_hospital[number_days_infectious_in_hospital>0.5]
     
-      # now under the assumption of a long duration of infectiousness
+      # 2b. now under the assumption of a long duration of infectiousness
       number_days_infectious_in_hospital_long <- pmin(hospital_duration, time_infectiousness_after_admission_long)
       number_days_infectious_in_hospital_positive_long <- number_days_infectious_in_hospital_long[number_days_infectious_in_hospital_long>0.5]
     
-      # now under the assumption of a long duration of infectiousness
+      # 2c. now under the assumption of a long duration of infectiousness
       number_days_infectious_in_hospital_hosp <- pmin(hospital_duration, time_infectiousness_after_admission_hosp)
       number_days_infectious_in_hospital_positive_hosp <- number_days_infectious_in_hospital_hosp[number_days_infectious_in_hospital_hosp>0.5]
       
-    ## calcualte statistics
+    ## 3a. calcualte statistics
     prob_infectious_in_hospital <- sum(number_days_infectious_in_hospital>0.5) / num_samples
     prop_infectious_days_in_hospitals <- sum(number_days_infectious_in_hospital) / sum(infectious_duration)
     
-      # and for long duration infectious
+      # 3b. and for long duration infectious
       prob_infectious_in_hospital_long <- sum(number_days_infectious_in_hospital_long>0.5) / num_samples
       prop_infectious_days_in_hospitals_long <- sum(number_days_infectious_in_hospital_long) / sum(infectious_duration_long)
     
-      # and for hosp duration infectious
+      # 3c. and for hosp duration infectious
       prob_infectious_in_hospital_hosp <- sum(number_days_infectious_in_hospital_hosp>0.5) / num_samples
       prop_infectious_days_in_hospitals_hosp <- sum(number_days_infectious_in_hospital_hosp) / sum(infectious_duration_hospital)
       
