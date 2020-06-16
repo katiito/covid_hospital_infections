@@ -1,8 +1,141 @@
 
 
+hospitalinfections_infectious_in_hospital <- function(){
+  library(ggplot2)
+  library(dplyr)
+  library(rriskDistributions)
+  
+  num_samples = 100000
+  length_of_stay_mean = 4
+  length_of_stay_k = 10
+  
+  # estimates taken from Davies et al. https://www.medrxiv.org/content/10.1101/2020.04.01.20049908v1
+  latent_duration_mean = 4
+  latent_duration_k = 4
+  
+  # time spent infectious (pre-symptomatic)
+  preclinical_duration_mean = 1.5
+  preclinical_duration_k = 4
+  
+  # time spent infectious (symptomatic)
+  clinical_duration_mean = 3.5
+  clinical_duration_k = 4
+  
+  # delay between onset and hospitalisation due to covid
+  hospital_delayfromonset_mean = 7
+  hospital_delayfromonset_k = 7
+  
+  # covid-specific length of stay
+  hospital_duration_mean = 7
+  hospital_duration_k = 7
+  
+  # Fitting a Gamma Distribution to the van Kampen hospital study
+  # https://www.medrxiv.org/content/10.1101/2020.06.08.20125310v1.full.pdf
+  g_out <- get.gamma.par(p = c(0.025, 0.5, 0.975), q = c(5, 8, 11),
+                         show.output = FALSE, plot = FALSE)
+  
 
+  latent_duration <- rgamma(num_samples, scale = latent_duration_mean/latent_duration_k, 
+                            shape = latent_duration_k)
+  preclinical_duration <- rgamma(num_samples, scale = preclinical_duration_mean/preclinical_duration_k, 
+                                 shape = preclinical_duration_k)
+  clinical_duration <- rgamma(num_samples, scale = clinical_duration_mean/clinical_duration_k, 
+                              shape = clinical_duration_k)
+  hospital_delayfromonset <- rgamma(num_samples, scale = hospital_delayfromonset_mean/hospital_delayfromonset_k, 
+                                    shape = hospital_delayfromonset_k)
+  hospital_duration <- rgamma(num_samples, scale = hospital_duration_mean/hospital_duration_k, 
+                              shape = hospital_duration_k)
+  infectious_duration <- preclinical_duration + clinical_duration
+  infectious_duration_hospital <- rgamma(num_samples, scale = 1/g_out["rate"], shape =  g_out["shape"])
+  
+  infectious_duration_long_truncate <- sort(infectious_duration)[(0.95*num_samples):num_samples]
+  infectious_duration_long <- sample(infectious_duration_long_truncate, num_samples, replace = TRUE)
+  
+  
+  ## Assuming that infected at hospital but not severely enough 
+  ## to cause increase in length of stay
+ 
+  # infection at any point during los -relative to hospital admission
+  duration_hospital_stay <- rgamma(num_samples, scale = length_of_stay_mean/length_of_stay_k, 
+                                                 shape = length_of_stay_k)
+  time_of_hosp_infection <- runif(num_samples, min = replicate(num_samples,0), max = duration_hospital_stay)
+  time_until_infectiousness <- time_of_hosp_infection + latent_duration
+  
 
-hospital_infectious <- function(){
+  # calculate proportion days of hospital-acquired spend in hosp based on independent distribution
+  time_until_not_infectiousness_indpt <- time_until_infectiousness + infectious_duration
+  days_infectious_in_hosp_indpt <- pmax(0, duration_hospital_stay - time_until_infectiousness) - pmax(0, duration_hospital_stay - time_until_not_infectiousness_indpt) 
+  days_infectious_in_hosp_indpt_positive <- days_infectious_in_hosp_indpt[days_infectious_in_hosp_indpt>0]
+  prop_days_inf_in_hosp_indpt <- sum(days_infectious_in_hosp_indpt) / sum(infectious_duration)
+  
+  # calculate proportion days of hospital-acquired spend in hosp based on  longer distribution
+  time_until_not_infectiousness_long <- time_until_infectiousness + infectious_duration_long
+  days_infectious_in_hosp_long <- pmax(0, duration_hospital_stay - time_until_infectiousness) - pmax(0, duration_hospital_stay - time_until_not_infectiousness_long) 
+  days_infectious_in_hosp_long_positive <- days_infectious_in_hosp_long[days_infectious_in_hosp_long>0]
+  prop_days_inf_in_hosp_long <- sum(days_infectious_in_hosp_long) / sum(infectious_duration_long)
+  
+  # calculate proportion days of hospital-acquired spend in hosp based on van Kampen study (hospital patients)
+  time_until_not_infectiousness_hosp <- time_until_infectiousness + infectious_duration_hospital
+  days_infectious_in_hosp_hosp <- pmax(0, duration_hospital_stay - time_until_infectiousness) - pmax(0, duration_hospital_stay - time_until_not_infectiousness_hosp) 
+  days_infectious_in_hosp_hosp_positive <- days_infectious_in_hosp_hosp[days_infectious_in_hosp_hosp>0]
+  prop_days_inf_in_hosp_hosp <- sum(days_infectious_in_hosp_hosp) / sum(infectious_duration_hospital)
+  
+  
+  # Output 
+  cat("Assuming infectious duration is independent of hospitalisation risk", "\n") 
+  cat("Proportion of days spent infectious in hosp = ", round(prop_days_inf_in_hosp_indpt,3), "\n\n") 
+  
+  cat("Assuming hospitalised cases are in upper 95% infectious duration", "\n") 
+  cat("Proportion of days spent infectious in hosp = ", round(prop_days_inf_in_hosp_long,3), "\n\n") 
+  
+  cat("Assuming hospitalised cases are as estimated in van Kampman", "\n") 
+  cat("Proportion of days spent infectious in hosp = ", round(prop_days_inf_in_hosp_hosp,3), "\n") 
+  
+  
+  data_indpt <- bind_rows("hospital stay duration" = as_tibble(duration_hospital_stay), 
+                          "admittance to infection delay" = as_tibble(time_of_hosp_infection),
+                          "days infectious in hosp" = as_tibble(days_infectious_in_hosp_indpt),
+                          "days | infectious in hosp" = as_tibble(days_infectious_in_hosp_indpt_positive), 
+                          .id="variable")
+  
+  
+  data_long <- bind_rows("hospital stay duration" = as_tibble(duration_hospital_stay), 
+                         "admittance to infection delay" = as_tibble(time_of_hosp_infection),
+                         "days infectious in hosp" = as_tibble(days_infectious_in_hosp_long),
+                         "days | infectious in hosp" = as_tibble(days_infectious_in_hosp_long_positive), 
+                         .id="variable")
+  
+  data_hosp <- bind_rows("hospital stay duration" = as_tibble(duration_hospital_stay), 
+                         "admittance to infection delay" = as_tibble(time_of_hosp_infection),
+                         "days infectious in hosp" = as_tibble(days_infectious_in_hosp_hosp),
+                         "days | infectious in hosp" = as_tibble(days_infectious_in_hosp_hosp_positive), 
+                         .id="variable")
+  
+  data <- bind_rows("independent" = data_indpt, 
+                    "upper 95%" = data_long,
+                    "hospital study" = data_hosp, .id = "association")
+  names(data)[names(data) == "value"] <- "days"
+  data$variable <- factor(data$variable, levels = c("hospital stay duration",
+                                                    "admittance to infection delay",
+                                                    "days infectious in hosp",
+                                                    "days | infectious in hosp"))
+  
+  p <- ggplot(data, aes(x = days, after_stat(density))) +
+    geom_histogram(binwidth = 0.5) +
+    ggtitle("Hospital-acquired infections") +
+    facet_grid(variable ~ association,
+               scales = "free_y")
+  
+  print(p)
+  
+  ## infected which causes increase in length of stay
+  
+  
+  
+  
+}
+
+communityinfections_infectious_in_hospital <- function(){
     library(ggplot2)
     library(dplyr)
     library(rriskDistributions)
@@ -14,17 +147,21 @@ hospital_infectious <- function(){
     
     # estimates taken from Davies et al. https://www.medrxiv.org/content/10.1101/2020.04.01.20049908v1
     latent_duration_mean = 4
-    latent_duration_k=4
+    latent_duration_k = 4
     
+    # time spent infectious (pre-symptomatic)
     preclinical_duration_mean = 1.5
     preclinical_duration_k = 4
     
+    # time spent infectious (symptomatic)
     clinical_duration_mean = 3.5
     clinical_duration_k = 4
     
+    # delay between onset and hospitalisation due to covid
     hospital_delayfromonset_mean = 7
     hospital_delayfromonset_k = 7
     
+    # covid-specific length of stay
     hospital_duration_mean = 7
     hospital_duration_k = 7
     
@@ -71,26 +208,26 @@ hospital_infectious <- function(){
     
     ## 2a. calcualte number of days infectious within the hospital 
     number_days_infectious_in_hospital <- pmin(hospital_duration, time_infectiousness_after_admission)
-    number_days_infectious_in_hospital_positive <- number_days_infectious_in_hospital[number_days_infectious_in_hospital>0.5]
+    number_days_infectious_in_hospital_positive <- number_days_infectious_in_hospital[number_days_infectious_in_hospital>0]
     
       # 2b. now under the assumption of a long duration of infectiousness
       number_days_infectious_in_hospital_long <- pmin(hospital_duration, time_infectiousness_after_admission_long)
-      number_days_infectious_in_hospital_positive_long <- number_days_infectious_in_hospital_long[number_days_infectious_in_hospital_long>0.5]
+      number_days_infectious_in_hospital_positive_long <- number_days_infectious_in_hospital_long[number_days_infectious_in_hospital_long>0]
     
       # 2c. now under the assumption of a long duration of infectiousness
       number_days_infectious_in_hospital_hosp <- pmin(hospital_duration, time_infectiousness_after_admission_hosp)
-      number_days_infectious_in_hospital_positive_hosp <- number_days_infectious_in_hospital_hosp[number_days_infectious_in_hospital_hosp>0.5]
+      number_days_infectious_in_hospital_positive_hosp <- number_days_infectious_in_hospital_hosp[number_days_infectious_in_hospital_hosp>0]
       
     ## 3a. calcualte statistics
-    prob_infectious_in_hospital <- sum(number_days_infectious_in_hospital>0.5) / num_samples
+    prob_infectious_in_hospital <- sum(number_days_infectious_in_hospital>0) / num_samples
     prop_infectious_days_in_hospitals <- sum(number_days_infectious_in_hospital) / sum(infectious_duration)
     
       # 3b. and for long duration infectious
-      prob_infectious_in_hospital_long <- sum(number_days_infectious_in_hospital_long>0.5) / num_samples
+      prob_infectious_in_hospital_long <- sum(number_days_infectious_in_hospital_long>0) / num_samples
       prop_infectious_days_in_hospitals_long <- sum(number_days_infectious_in_hospital_long) / sum(infectious_duration_long)
     
       # 3c. and for hosp duration infectious
-      prob_infectious_in_hospital_hosp <- sum(number_days_infectious_in_hospital_hosp>0.5) / num_samples
+      prob_infectious_in_hospital_hosp <- sum(number_days_infectious_in_hospital_hosp>0) / num_samples
       prop_infectious_days_in_hospitals_hosp <- sum(number_days_infectious_in_hospital_hosp) / sum(infectious_duration_hospital)
       
     data_indpt <- bind_rows("not infectious delay" = as_tibble(time_to_lossofinfectiousness), 
@@ -124,6 +261,7 @@ hospital_infectious <- function(){
     
     p <- ggplot(data, aes(x = days, after_stat(density))) +
           geom_histogram(binwidth = 0.5) +
+          ggtitle("Community-acquired infections") +
           facet_grid(variable ~ association,
                      scales = "free_y")
     
