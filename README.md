@@ -1,5 +1,13 @@
 # covid_hospital_infections
 
+To run the R function, type:
+
+```R
+hospital_infectious()
+```
+
+Dependencies: The R packages ggplot2, dplyr, rriskDistributions
+
 Calculate 
 1) the fraction of community-acquired infections that are still infectious if they go to hospital. 
 2) the proportion of time that hospitalised patients are infectious within the hospital
