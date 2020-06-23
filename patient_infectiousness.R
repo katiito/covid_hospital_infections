@@ -1,11 +1,105 @@
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(rriskDistributions)
+library(gridExtra)
 
-
-hospitalinfections_infectious_in_hospital <- function(){
-  library(ggplot2)
-  library(dplyr)
-  library(rriskDistributions)
+# run_hospital_analysis <- function(){
+  num_samples <- 1000
+  comm2comm <- communityinfections_infectious_in_hospital(num_samples = num_samples, duration = "indpt")
+  comm2hosp <- communityinfections_infectious_in_hospital(num_samples = num_samples, duration = "hosp")
+  hosp2hosp <- hospitalinfections_infectious_in_hospital(num_samples = num_samples, duration = "hosp")
+  hosp2comm <- hospitalinfections_infectious_in_hospital(num_samples = num_samples, duration = "indpt")
   
-  num_samples = 100000
+  # 1. number days a CA spends in community assuming stays in comm  NONHOSP DURATION
+  CAcomm_comm <- comm2comm$inf_total 
+  # 2. number of days a CA spendin community or hosp assuming goes to hosp for covid
+  CAcomm_hosp <- comm2hosp$inf_total - comm2hosp$infectious_days_hosp
+  CAhosp_hosp <- comm2hosp$infectious_days_hosp
+  # 3. number of days a CA spendin community or hosp assuming goes to hosp for non-covid NONHOSP DURATION
+  CAcomm_nchosp <- runif(num_samples, min = replicate(num_samples,0), max = comm2comm$inf_total) ### could update this with the comm2comm 
+  CAhosp_nchosp <-  comm2comm$inf_total - CAcomm_nchosp ### could update this with the comm2comm 
+  # 4. number days a HA spends in community or hospital given discharge to community NONHOSP DURATION
+  HAcomm_comm <- hosp2comm$inf_total - hosp2comm$infectious_days_hosp #### could update this with the comm2comm
+  HAhosp_comm <- hosp2comm$infectious_days_hosp ### could update this with the comm2comm
+  # 5. number days a HA spends in community or hospital given readmittance to hosp for covid
+  HAcomm_hosp <- comm2hosp$inf_total - comm2hosp$infectious_days_hosp - hosp2hosp$infectious_days_hosp
+  HAhosp_hosp <- comm2hosp$inf_total - HAcomm_hosp
+  # 6. number days a HA spends in community or hospital given readmittance to hosp for noncovid NONHOSP DURATION
+  HAcomm_nchosp <- runif(num_samples, min = replicate(num_samples,0), max = HAcomm_comm)
+  HAhosp_nchosp <- hosp2comm$inf_total - HAcomm_nchosp
+
+par(mfrow=c(3,4))  
+ hist(CAcomm_comm)
+ hist(CAcomm_hosp)
+ hist(CAhosp_hosp)
+ hist(CAcomm_nchosp)
+ hist(CAhosp_nchosp)
+ hist(HAcomm_comm)
+ hist(HAhosp_comm)
+ hist(HAcomm_hosp)
+ hist(HAhosp_hosp)
+ hist(HAcomm_nchosp)
+ hist(HAhosp_nchosp)
+ plot(HAcomm_nchosp, HAhosp_nchosp)
+  
+  # infectious days spent in hospital
+  infectious_days <- bind_cols("CA_in_hosp" = comm2hosp$infectious_days, 
+                               "HA_in_hosp" = hosp2hosp$infectious_days,
+                               "CA_overall" = comm2hosp$inf_total,
+                               "HA_overall" = hosp2hosp$inf_total)
+                          
+          
+  # fraction of infectious days spent in hospital for community acquired
+  infectious_days <- infectious_days %>%
+        mutate(CA_spent_in_hosp_frac =  CA_in_hosp / CA_overall) %>%
+        mutate(HA_spent_in_hosp_frac = HA_in_hosp / HA_overall) %>%
+        mutate(CA_frac_of_hosp_infectious = CA_in_hosp / (CA_in_hosp + HA_in_hosp)) 
+  # fraction of infectious days spent in hospital for hospital acquired
+  
+  
+  
+  infectious_days_fractions <- infectious_days %>%
+      select(CA_spent_in_hosp_frac, HA_spent_in_hosp_frac, CA_frac_of_hosp_infectious)
+  
+  infectious_days_durations <- infectious_days %>%
+    select(CA_in_hosp, HA_in_hosp)
+  # infectious_days_in_hosp <- infectious_days %>%
+  #           filter(from_comm_in_hosp != 0 & from_hosp_in_hosp != 0)
+  # 
+
+  # data_out <- bind_rows("comm_spent_in_hosp_frac" = comm_spent_in_hosp_frac, 
+  #                        "hosp_spent_in_hosp_frac" = hosp_spent_in_hosp_frac,
+  #                        "comm_frac_of_hosp_infections" = comm_frac_of_hosp_infections,
+  #                        .id = "var")
+  
+  infectious_days_fractions_long <- pivot_longer(infectious_days_fractions, 
+                                  cols = names(infectious_days_fractions),
+                                  names_to = "variable",
+                                  values_to = "fraction")
+  infectious_days_durations_long <- pivot_longer(infectious_days_durations, 
+                                                 cols = names(infectious_days_durations),
+                                                 names_to = "variable",
+                                                 values_to = "days")
+  
+  # given infection is acquired within comm or hosp, number days spent infectious at the hospital
+  p <- ggplot(data = infectious_days_durations_long, aes(x = variable, y = days))  + 
+          geom_violin()
+  # given infection is acquired within comm or hosp, fraction of time spent infectious at the hospital
+  # fraction of infections that are in hosp acquired in community
+  q <- ggplot(data = infectious_days_fractions_long, aes(x = variable, y = fraction))  + 
+    geom_violin()
+  
+  
+# grid.arrange(p,q)
+# }
+
+
+
+hospitalinfections_infectious_in_hospital <- function(num_samples, duration_type){
+  
+  
+  # estimates of hospital stay non covid
   length_of_stay_mean = 4
   length_of_stay_k = 10
   
@@ -126,24 +220,37 @@ hospitalinfections_infectious_in_hospital <- function(){
     facet_grid(variable ~ association,
                scales = "free_y")
   
-  print(p)
+  # print(p)
   
-  ## infected which causes increase in length of stay
+ id_ret <- data.frame("indpt" = days_infectious_in_hosp_indpt,
+                      "hosp" = days_infectious_in_hosp_hosp,
+                      "long" = days_infectious_in_hosp_long)
+ 
+ pd_ret  <- data.frame("indpt" = prop_days_inf_in_hosp_indpt,
+                               "hosp" = prop_days_inf_in_hosp_hosp,
+                               "long" = prop_days_inf_in_hosp_long)
+ 
+inf_duration <- data.frame("indpt" = infectious_duration,
+                           "hosp" = infectious_duration_hospital,
+                           "long" = infectious_duration_long)
+if(duration_type == "hosp"){
+  return(list("infectious_days_hosp" = id_ret$hosp, "prop_days" = pd_ret$hosp, "inf_total" = inf_duration$hosp))
+} else if(duration_type == "indpt"){
+  return(list("infectious_days_hosp" = id_ret$indpt, "prop_days" = pd_ret$indpt, "inf_total" = inf_duration$indpt))
+}
   
   
   
   
 }
 
-communityinfections_infectious_in_hospital <- function(){
-    library(ggplot2)
-    library(dplyr)
-    library(rriskDistributions)
+communityinfections_infectious_in_hospital <- function(num_samples, duration_type){
+    
     # # Number of days that a hospitalised person is infectious in the hospital
     # = MIN[ hospitalised duration, 
     #        MIN[0, (time to loss of infectiousness) - (time to hospital admission)]]
     
-    num_samples = 100000
+    
     
     # estimates taken from Davies et al. https://www.medrxiv.org/content/10.1101/2020.04.01.20049908v1
     latent_duration_mean = 4
@@ -265,7 +372,7 @@ communityinfections_infectious_in_hospital <- function(){
           facet_grid(variable ~ association,
                      scales = "free_y")
     
-    print(p)
+   # print(p)
     
     # Output 
     cat("Assuming infectious duration is independent of hospitalisation risk", "\n") 
@@ -279,5 +386,24 @@ communityinfections_infectious_in_hospital <- function(){
     cat("Assuming hospitalised cases are as estimated in van Kampman", "\n") 
     cat("Prob of hospital case being infectious = ", round(prob_infectious_in_hospital_hosp,3), "\n") 
     cat("Proportion of days spent infectious in hosp = ", round(prop_infectious_days_in_hospitals_hosp,3), "\n") 
+    
+    
+    id_ret <- data.frame("indpt" = number_days_infectious_in_hospital,
+                             "hosp" = number_days_infectious_in_hospital_hosp,
+                             "long" = number_days_infectious_in_hospital_long)
+    
+    pd_ret <- data.frame("indpt" = prop_infectious_days_in_hospitals,
+                                  "hosp" = prop_infectious_days_in_hospitals_hosp,
+                                  "long" = prop_infectious_days_in_hospitals_long)
+    
+    inf_duration <- data.frame("indpt" = infectious_duration,
+                               "hosp" = infectious_duration_hospital,
+                               "long" = infectious_duration_long)
+    
+    if(duration_type == "hosp"){
+      return(list("infectious_days_hosp" = id_ret$hosp, "prop_days" = pd_ret$hosp, "inf_total" = inf_duration$hosp))
+    } else if(duration_type == "indpt"){
+      return(list("infectious_days_hosp" = id_ret$indpt, "prop_days" = pd_ret$indpt, "inf_total" = inf_duration$indpt))
+    }
     
 } 
