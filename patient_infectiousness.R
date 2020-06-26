@@ -1,16 +1,17 @@
 library(ggplot2)
 library(dplyr)
 library(tidyr)
-library(rriskDistributions)
+
 library(gridExtra)
 
 # run_hospital_analysis <- function(){
-  num_samples <- 1000
-  comm2comm <- communityinfections_infectious_in_hospital(num_samples = num_samples, duration = "indpt")
-  comm2hosp <- communityinfections_infectious_in_hospital(num_samples = num_samples, duration = "hosp")
-  hosp2hosp <- hospitalinfections_infectious_in_hospital(num_samples = num_samples, duration = "hosp")
-  hosp2comm <- hospitalinfections_infectious_in_hospital(num_samples = num_samples, duration = "indpt")
-  hosp2hospReadmitted <- hospitalinfections_readmitted_infectious_in_hospital(num_samples = num_samples, duration = "hosp", hosp_speed = "normal")
+  
+  comm2comm <- communityinfections_infectious_in_hospital(duration = "indpt")
+  comm2hosp <- communityinfections_infectious_in_hospital(duration = "hosp") # OK
+  hosp2hosp <- hospitalinfections_infectious_in_hospital(duration = "hosp") # OK
+  hosp2comm <- hospitalinfections_infectious_in_hospital(duration = "indpt")
+  # something up with this - lower than comm2hosp - should be same or higher
+  hosp2hospReadmitted <- hospitalinfections_readmitted_infectious_in_hospital(duration = "hosp", hosp_speed = "normal")
   hosp2hospReadmitted_notcovid <- ######
   # 1. number days a CA spends in community assuming stays in comm  NONHOSP DURATION
   CAcomm_comm <- comm2comm$inf_total 
@@ -99,79 +100,22 @@ par(mfrow=c(3,4))
 
 
 
-hospitalinfections_infectious_in_hospital <- function(num_samples, duration_type){
+hospitalinfections_infectious_in_hospital <- function(duration_type){
   
   
-  # estimates of hospital stay non covid
-  length_of_stay_mean = 4
-  length_of_stay_k = 10
+  p <- readParameters(duration_type)
   
-  # estimates taken from Davies et al. https://www.medrxiv.org/content/10.1101/2020.04.01.20049908v1
-  latent_duration_mean = 4
-  latent_duration_k = 4
-  
-  # time spent infectious (pre-symptomatic)
-  preclinical_duration_mean = 1.5
-  preclinical_duration_k = 4
-  
-  # time spent infectious (symptomatic)
-  clinical_duration_mean = 3.5
-  clinical_duration_k = 4
-  
-  # delay between onset and hospitalisation due to covid
-  hospital_delayfromonset_mean = 7
-  hospital_delayfromonset_k = 7
-  
-  # covid-specific length of stay
-  hospital_duration_mean = 7
-  hospital_duration_k = 7
-  
-  # Fitting a Gamma Distribution to the van Kampen hospital study
-  # https://www.medrxiv.org/content/10.1101/2020.06.08.20125310v1.full.pdf
-  g_out <- get.gamma.par(p = c(0.025, 0.5, 0.975), q = c(5, 8, 11),
-                         show.output = FALSE, plot = FALSE)
-  
-
-  latent_duration <- rgamma(num_samples, scale = latent_duration_mean/latent_duration_k, 
-                            shape = latent_duration_k)
-  preclinical_duration <- rgamma(num_samples, scale = preclinical_duration_mean/preclinical_duration_k, 
-                                 shape = preclinical_duration_k)
-  clinical_duration <- rgamma(num_samples, scale = clinical_duration_mean/clinical_duration_k, 
-                              shape = clinical_duration_k)
-  hospital_delayfromonset <- rgamma(num_samples, scale = hospital_delayfromonset_mean/hospital_delayfromonset_k, 
-                                    shape = hospital_delayfromonset_k)
-  hospital_duration <- rgamma(num_samples, scale = hospital_duration_mean/hospital_duration_k, 
-                              shape = hospital_duration_k)
-
-  
-  
-  
-  if(duration_type=="indpt"){
-    infectious_duration <- preclinical_duration + clinical_duration
-    output_message <- "Assuming infectious duration is independent of hospitalisation risk"
-  }else if(duration_type=="long"){
-    infectious_duration_long_truncate <- sort(infectious_duration)[(0.95*num_samples):num_samples]
-    infectious_duration <- sample(infectious_duration_long_truncate, num_samples, replace = TRUE)
-    output_message <- "Assuming hospitalised cases are in upper 95% infectious duration"
-  }else if(duration_type=="hosp"){
-    infectious_duration <- rgamma(num_samples, scale = 1/g_out["rate"], shape =  g_out["shape"])
-    output_message <- "Assuming hospitalised cases are as estimated in van Kampman"
-  }
-  
-  ## Assuming that infected at hospital but not severely enough 
-  ## to cause increase in length of stay
- 
   # infection at any point during los -relative to hospital admission
-  duration_hospital_stay <- rgamma(num_samples, scale = length_of_stay_mean/length_of_stay_k, 
-                                                 shape = length_of_stay_k)
-  time_of_hosp_infection <- runif(num_samples, min = replicate(num_samples,0), max = duration_hospital_stay)
-  time_until_infectiousness <- time_of_hosp_infection + latent_duration
+  
+  time_of_hosp_infection <- runif(p$num_samples, min = replicate(p$num_samples,0), max = p$duration_hospital_stay)
+  time_to_infectious <- time_of_hosp_infection + p$latent_duration
   
   # calculate proportion days of hospital-acquired spend in hosp based on independent distribution
-  time_until_not_infectiousness <- time_until_infectiousness + infectious_duration
-  days_infectious_in_hosp <- pmax(0, duration_hospital_stay - time_until_infectiousness) - pmax(0, duration_hospital_stay - time_until_not_infectiousness) 
+  time_to_not_infectious <- time_to_infectious + p$infectious_duration
+  
+  days_infectious_in_hosp <- pmax(0, p$duration_hospital_stay - time_to_infectious) - pmax(0, p$duration_hospital_stay - time_to_not_infectious) 
   days_infectious_in_hosp_positive <- days_infectious_in_hosp[days_infectious_in_hosp>0]
-  prop_days_inf_in_hosp <- sum(days_infectious_in_hosp) / sum(infectious_duration)
+  prop_days_inf_in_hosp <- sum(days_infectious_in_hosp) / sum(p$infectious_duration)
   
   # # calculate proportion days of hospital-acquired spend in hosp based on independent distribution
   # time_until_not_infectiousness_indpt <- time_until_infectiousness + infectious_duration
@@ -193,7 +137,7 @@ hospitalinfections_infectious_in_hospital <- function(num_samples, duration_type
   # 
   
   # Output 
-  cat(output_message, "\n") 
+  cat(p$output_message, "\n") 
   cat("Proportion of days spent infectious in hosp = ", round(prop_days_inf_in_hosp,3), "\n\n") 
 
   
@@ -233,7 +177,7 @@ hospitalinfections_infectious_in_hospital <- function(num_samples, duration_type
   # 
   # # print(p)
   # 
-  return(list("infectious_days_hosp" = days_infectious_in_hosp, "inf_total" = infectious_duration))
+  return(list("infectious_days_hosp" = days_infectious_in_hosp, "inf_total" = p$infectious_duration))
 #  id_ret <- data.frame("indpt" = days_infectious_in_hosp_indpt,
 #                       "hosp" = days_infectious_in_hosp_hosp,
 #                       "long" = days_infectious_in_hosp_long)
@@ -257,94 +201,95 @@ hospitalinfections_infectious_in_hospital <- function(num_samples, duration_type
 }
 
 
-hospitalinfections_readmitted_infectious_in_hospital <- function(num_samples, duration_type, hosp_speed){
+hospitalinfections_readmitted_infectious_in_hospital <- function(duration_type, hosp_speed){
   
-  
-  # estimates of hospital stay non covid
-  length_of_stay_mean = 4
-  length_of_stay_k = 10
-  
-  # estimates taken from Davies et al. https://www.medrxiv.org/content/10.1101/2020.04.01.20049908v1
-  latent_duration_mean = 4
-  latent_duration_k = 4
-  
-  # time spent infectious (pre-symptomatic)
-  preclinical_duration_mean = 1.5
-  preclinical_duration_k = 4
-  
-  # time spent infectious (symptomatic)
-  clinical_duration_mean = 3.5
-  clinical_duration_k = 4
-  
-  # delay between onset and hospitalisation due to covid
-  hospital_delayfromonset_mean = 7
-  hospital_delayfromonset_k = 7
-  
-  # covid-specific length of stay
-  hospital_duration_mean = 7
-  hospital_duration_k = 7
-  
-  # Fitting a Gamma Distribution to the van Kampen hospital study
-  # https://www.medrxiv.org/content/10.1101/2020.06.08.20125310v1.full.pdf
-  g_out <- get.gamma.par(p = c(0.025, 0.5, 0.975), q = c(5, 8, 11),
-                         show.output = FALSE, plot = FALSE)
-  
-  
-  latent_duration <- rgamma(num_samples, scale = latent_duration_mean/latent_duration_k, 
-                            shape = latent_duration_k)
-  preclinical_duration <- rgamma(num_samples, scale = preclinical_duration_mean/preclinical_duration_k, 
-                                 shape = preclinical_duration_k)
-  clinical_duration <- rgamma(num_samples, scale = clinical_duration_mean/clinical_duration_k, 
-                              shape = clinical_duration_k)
-  hospital_delayfromonset <- rgamma(num_samples, scale = hospital_delayfromonset_mean/hospital_delayfromonset_k, 
-                                    shape = hospital_delayfromonset_k)
-  hospital_duration <- rgamma(num_samples, scale = hospital_duration_mean/hospital_duration_k, 
-                              shape = hospital_duration_k)
-  # infectious_duration <- preclinical_duration + clinical_duration
-  # infectious_duration_hospital <- rgamma(num_samples, scale = 1/g_out["rate"], shape =  g_out["shape"])
+  p <- readParameters(duration_type)
+  # # estimates of hospital stay non covid
+  # length_of_stay_mean = 4
+  # length_of_stay_k = 10
   # 
-  # infectious_duration_long_truncate <- sort(infectious_duration)[(0.95*num_samples):num_samples]
-  # infectious_duration_long <- sample(infectious_duration_long_truncate, num_samples, replace = TRUE)
-  
-  if(duration_type=="indpt"){
-    infectious_duration <- preclinical_duration + clinical_duration
-    output_message <- "Assuming infectious duration is independent of hospitalisation risk"
-  }else if(duration_type=="long"){
-    infectious_duration_long_truncate <- sort(infectious_duration)[(0.95*num_samples):num_samples]
-    infectious_duration <- sample(infectious_duration_long_truncate, num_samples, replace = TRUE)
-    output_message <- "Assuming hospitalised cases are in upper 95% infectious duration"
-  }else if(duration_type=="hosp"){
-    infectious_duration <- rgamma(num_samples, scale = 1/g_out["rate"], shape =  g_out["shape"])
-    output_message <- "Assuming hospitalised cases are as estimated in van Kampman"
-  }
-  
+  # # estimates taken from Davies et al. https://www.medrxiv.org/content/10.1101/2020.04.01.20049908v1
+  # latent_duration_mean = 4
+  # latent_duration_k = 4
+  # 
+  # # time spent infectious (pre-symptomatic)
+  # preclinical_duration_mean = 1.5
+  # preclinical_duration_k = 4
+  # 
+  # # time spent infectious (symptomatic)
+  # clinical_duration_mean = 3.5
+  # clinical_duration_k = 4
+  # 
+  # # delay between onset and hospitalisation due to covid
+  # hospital_delayfromonset_mean = 7
+  # hospital_delayfromonset_k = 7
+  # 
+  # # covid-specific length of stay
+  # hospital_duration_mean = 7
+  # hospital_duration_k = 7
+  # 
+  # # Fitting a Gamma Distribution to the van Kampen hospital study
+  # # https://www.medrxiv.org/content/10.1101/2020.06.08.20125310v1.full.pdf
+  # g_out <- get.gamma.par(p = c(0.025, 0.5, 0.975), q = c(5, 8, 11),
+  #                        show.output = FALSE, plot = FALSE)
+  # 
+  # 
+  # latent_duration <- rgamma(num_samples, scale = latent_duration_mean/latent_duration_k, 
+  #                           shape = latent_duration_k)
+  # preclinical_duration <- rgamma(num_samples, scale = preclinical_duration_mean/preclinical_duration_k, 
+  #                                shape = preclinical_duration_k)
+  # clinical_duration <- rgamma(num_samples, scale = clinical_duration_mean/clinical_duration_k, 
+  #                             shape = clinical_duration_k)
+  # hospital_delayfromonset <- rgamma(num_samples, scale = hospital_delayfromonset_mean/hospital_delayfromonset_k, 
+  #                                   shape = hospital_delayfromonset_k)
+  # hospital_duration <- rgamma(num_samples, scale = hospital_duration_mean/hospital_duration_k, 
+  #                             shape = hospital_duration_k)
+  # # infectious_duration <- preclinical_duration + clinical_duration
+  # # infectious_duration_hospital <- rgamma(num_samples, scale = 1/g_out["rate"], shape =  g_out["shape"])
+  # # 
+  # # infectious_duration_long_truncate <- sort(infectious_duration)[(0.95*num_samples):num_samples]
+  # # infectious_duration_long <- sample(infectious_duration_long_truncate, num_samples, replace = TRUE)
+  # 
+  # if(duration_type=="indpt"){
+  #   infectious_duration <- preclinical_duration + clinical_duration
+  #   output_message <- "Assuming infectious duration is independent of hospitalisation risk"
+  # }else if(duration_type=="long"){
+  #   infectious_duration_long_truncate <- sort(infectious_duration)[(0.95*num_samples):num_samples]
+  #   infectious_duration <- sample(infectious_duration_long_truncate, num_samples, replace = TRUE)
+  #   output_message <- "Assuming hospitalised cases are in upper 95% infectious duration"
+  # }else if(duration_type=="hosp"){
+  #   infectious_duration <- rgamma(num_samples, scale = 1/g_out["rate"], shape =  g_out["shape"])
+  #   output_message <- "Assuming hospitalised cases are as estimated in van Kampman"
+  # }
+  # 
   ## Assuming that infected at hospital severely enough 
   ## to cause increase in length of stay
   
-  # infection at any point during los -relative to hospital admission
-  duration_hospital_stay <- rgamma(num_samples, scale = length_of_stay_mean/length_of_stay_k, 
-                                   shape = length_of_stay_k)
-  time_of_hosp_infection <- runif(num_samples, min = replicate(num_samples,0), max = duration_hospital_stay)
-  time_until_infectiousness <- time_of_hosp_infection + latent_duration
-  
+  # # infection at any point during los -relative to first hospital admission
+  # duration_hospital_stay <- rgamma(num_samples, scale = length_of_stay_mean/length_of_stay_k, 
+  #                                  shape = length_of_stay_k)
+   time_of_hosp_infection <- runif(p$num_samples, min = replicate(p$num_samples,0), max = p$duration_hospital_stay)
+   time_to_infectious <- time_of_hosp_infection + p$latent_duration
+  # 
   # assuming severe infection are readmitted to hosp on onset symptoms / normal time
   if(hosp_speed=="fast"){
-    time_until_readmission <- time_of_hosp_infection + latent_duration + preclinical_duration
+    time_until_readmission <- time_of_hosp_infection + p$latent_duration + p$preclinical_duration
   } else if(hosp_speed=="normal"){
-    time_until_readmission <- time_of_hosp_infection + latent_duration + preclinical_duration + hospital_delayfromonset
+    time_until_readmission <- time_of_hosp_infection + p$latent_duration + p$preclinical_duration + p$hospital_delayfromonset
     
   }
-  time_until_discharge <- pmin(time_until_readmission, duration_hospital_stay)
-  time_until_discharge_second <- time_until_readmission + hospital_duration
+  time_until_discharge <- pmin(time_until_readmission, p$duration_hospital_stay)
+  time_until_discharge_second <- time_until_readmission + p$hospital_duration
   
   
   # calculate proportion days of hospital-acquired spend in hosp based on independent distribution
-  time_until_not_infectiousness <- time_until_infectiousness + infectious_duration
-  days_infectious_in_hosp_first <- pmax(0, time_until_discharge - time_until_infectiousness) - pmax(0, time_until_discharge - time_until_not_infectiousness) 
-  days_infectious_in_hosp_second <- pmax(0, pmin(time_until_discharge_second,time_until_not_infectiousness) - pmax(time_until_readmission,time_until_infectiousness) )
+  time_to_not_infectious <- time_to_infectious + p$infectious_duration
+  days_infectious_in_hosp_first <- pmax(0, time_until_discharge - time_to_infectious) - pmax(0, time_until_discharge - time_to_not_infectious) 
+  # days_infectious_in_hosp_first <- pmax(time_until_discharge - time_to_infectious) - pmax(0, time_until_discharge - time_to_not_infectious) 
+  days_infectious_in_hosp_second <- pmax(0, pmin(time_until_discharge_second, time_to_not_infectious) - pmax(time_until_readmission, time_to_infectious) )
   days_infectious_in_hosp <- days_infectious_in_hosp_first + days_infectious_in_hosp_second
   days_infectious_in_hosp_positive <- days_infectious_in_hosp[days_infectious_in_hosp>0]
-  prop_days_inf_in_hosp <- sum(days_infectious_in_hosp) / sum(infectious_duration)
+  prop_days_inf_in_hosp <- sum(days_infectious_in_hosp) / sum(p$infectious_duration)
   
   
   
@@ -368,8 +313,8 @@ hospitalinfections_readmitted_infectious_in_hospital <- function(num_samples, du
   
   # Output 
   
-  cat(output_message, "\n") 
-  cat("Proportion of days spent infectious in hosp = ", round(prop_days_inf_in_hosp_indpt,3), "\n\n") 
+  cat(p$output_message, "\n") 
+  cat("Proportion of days spent infectious in hosp = ", round(prop_days_inf_in_hosp,3), "\n\n") 
   
   # cat("Assuming infectious duration is independent of hospitalisation risk", "\n") 
   # cat("Proportion of days spent infectious in hosp = ", round(prop_days_inf_in_hosp_indpt,3), "\n\n") 
@@ -435,83 +380,93 @@ hospitalinfections_readmitted_infectious_in_hospital <- function(num_samples, du
   # }
   # 
   
-  
+  return(list("infectious_days_hosp" = days_infectious_in_hosp, "inf_total" = p$infectious_duration))
   
 }
 
 
-communityinfections_infectious_in_hospital <- function(num_samples, duration_type){
+communityinfections_infectious_in_hospital <- function(duration_type){
     
+    p <- readParameters(duration_type)
     # # Number of days that a hospitalised person is infectious in the hospital
     # = MIN[ hospitalised duration, 
     #        MIN[0, (time to loss of infectiousness) - (time to hospital admission)]]
     
     
     
-    # estimates taken from Davies et al. https://www.medrxiv.org/content/10.1101/2020.04.01.20049908v1
-    latent_duration_mean = 4
-    latent_duration_k = 4
-    
-    # time spent infectious (pre-symptomatic)
-    preclinical_duration_mean = 1.5
-    preclinical_duration_k = 4
-    
-    # time spent infectious (symptomatic)
-    clinical_duration_mean = 3.5
-    clinical_duration_k = 4
-    
-    # delay between onset and hospitalisation due to covid
-    hospital_delayfromonset_mean = 7
-    hospital_delayfromonset_k = 7
-    
-    # covid-specific length of stay
-    hospital_duration_mean = 7
-    hospital_duration_k = 7
-    
-    # Fitting a Gamma Distribution to the van Kampen hospital study
-    # https://www.medrxiv.org/content/10.1101/2020.06.08.20125310v1.full.pdf
-    g_out <- get.gamma.par(p = c(0.025, 0.5, 0.975), q = c(5, 8, 11),
-                           show.output = FALSE, plot = FALSE)
+    # # estimates taken from Davies et al. https://www.medrxiv.org/content/10.1101/2020.04.01.20049908v1
+    #  latent_duration_mean = 4
+    #  latent_duration_k = 4
+    # #
+    # # # time spent infectious (pre-symptomatic)
+    #  preclinical_duration_mean = 1.5
+    #  preclinical_duration_k = 4
+    # #
+    # # # time spent infectious (symptomatic)
+    #  clinical_duration_mean = 3.5
+    #  clinical_duration_k = 4
+    # 
+    # # delay between onset and hospitalisation due to covid
+    #  hospital_delayfromonset_mean = 7
+    #  hospital_delayfromonset_k = 7
+    # #
+    # # # covid-specific length of stay
+    #  hospital_duration_mean = 7
+    #  hospital_duration_k = 7
+    # #
+    # # # Fitting a Gamma Distribution to the van Kampen hospital study
+    # # # https://www.medrxiv.org/content/10.1101/2020.06.08.20125310v1.full.pdf
+    #  g_out <- get.gamma.par(p = c(0.025, 0.5, 0.975), q = c(5, 8, 11),
+    #                        show.output = FALSE, plot = FALSE)
+    # #
+    # #
+    #  latent_duration <- rgamma(num_samples, scale = latent_duration_mean/latent_duration_k,
+    #                             shape = latent_duration_k)
+    #  preclinical_duration <- rgamma(num_samples, scale = preclinical_duration_mean/preclinical_duration_k,
+    #                           shape = preclinical_duration_k)
+    #  clinical_duration <- rgamma(num_samples, scale = clinical_duration_mean/clinical_duration_k,
+    #                                shape = clinical_duration_k)
+    #  hospital_delayfromonset <- rgamma(num_samples, scale = hospital_delayfromonset_mean/hospital_delayfromonset_k,
+    #                             shape = hospital_delayfromonset_k)
+    #  hospital_duration <- rgamma(num_samples, scale = hospital_duration_mean/hospital_duration_k,
+    #                             shape = hospital_duration_k)
+    #   # infectious_duration <- preclinical_duration + clinical_duration
+    # # infectious_duration_hospital <- rgamma(num_samples, scale = 1/g_out["rate"], shape =  g_out["shape"])
+    # #
+    # # infectious_duration_long_truncate <- sort(infectious_duration)[(0.95*num_samples):num_samples]
+    # # infectious_duration_long <- sample(infectious_duration_long_truncate, num_samples, replace = TRUE)
+    # #
+    # if(duration_type=="indpt"){
+    #   infectious_duration <- preclinical_duration + clinical_duration
+    #   output_message <- "Assuming infectious duration is independent of hospitalisation risk"
+    # }else if(duration_type=="long"){
+    #   infectious_duration_long_truncate <- sort(infectious_duration)[(0.95*num_samples):num_samples]
+    #   infectious_duration <- sample(infectious_duration_long_truncate, num_samples, replace = TRUE)
+    #   output_message <- "Assuming hospitalised cases are in upper 95% infectious duration"
+    # }else if(duration_type=="hosp"){
+    #   infectious_duration <- rgamma(num_samples, scale = 1/g_out["rate"], shape =  g_out["shape"])
+    #   output_message <- "Assuming hospitalised cases are as estimated in van Kampman"
+    # }
 
+
+     time_to_hospital_admission <- p$latent_duration + p$preclinical_duration + p$hospital_delayfromonset
     
-    latent_duration <- rgamma(num_samples, scale = latent_duration_mean/latent_duration_k, 
-                               shape = latent_duration_k)
-    preclinical_duration <- rgamma(num_samples, scale = preclinical_duration_mean/preclinical_duration_k, 
-                             shape = preclinical_duration_k)
-    clinical_duration <- rgamma(num_samples, scale = clinical_duration_mean/clinical_duration_k, 
-                                  shape = clinical_duration_k)
-    hospital_delayfromonset <- rgamma(num_samples, scale = hospital_delayfromonset_mean/hospital_delayfromonset_k, 
-                               shape = hospital_delayfromonset_k)
-    hospital_duration <- rgamma(num_samples, scale = hospital_duration_mean/hospital_duration_k, 
-                               shape = hospital_duration_k)
-    # infectious_duration <- preclinical_duration + clinical_duration
-    # infectious_duration_hospital <- rgamma(num_samples, scale = 1/g_out["rate"], shape =  g_out["shape"])
-    # 
-    # infectious_duration_long_truncate <- sort(infectious_duration)[(0.95*num_samples):num_samples]
-    # infectious_duration_long <- sample(infectious_duration_long_truncate, num_samples, replace = TRUE)
-    # 
-    if(duration_type=="indpt"){
-      infectious_duration <- preclinical_duration + clinical_duration
-      output_message <- "Assuming infectious duration is independent of hospitalisation risk"
-    }else if(duration_type=="long"){
-      infectious_duration_long_truncate <- sort(infectious_duration)[(0.95*num_samples):num_samples]
-      infectious_duration <- sample(infectious_duration_long_truncate, num_samples, replace = TRUE)
-      output_message <- "Assuming hospitalised cases are in upper 95% infectious duration"
-    }else if(duration_type=="hosp"){
-      infectious_duration <- rgamma(num_samples, scale = 1/g_out["rate"], shape =  g_out["shape"])
-      output_message <- "Assuming hospitalised cases are as estimated in van Kampman"
-    }
+    # time_to_hospital_admission <- latent_duration + preclinical_duration + hospital_delayfromonset
     
-    
-    time_to_hospital_admission <- latent_duration + preclinical_duration + hospital_delayfromonset
-    time_to_lossofinfectiousness <- latent_duration + infectious_duration
+    time_to_not_infectious <- p$latent_duration + p$infectious_duration
+    # time_to_not_infectious <- p$latent_duration + p$infectious_duration
     # time_to_lossofinfectiousness_long <- latent_duration + infectious_duration_long
     # time_to_lossofinfectiousness_hospital <- latent_duration + infectious_duration_hospital
     
     ## 1a. calculate the time infectious after admitted to hosptial
-    time_infectiousness_after_admission_unltd <- time_to_lossofinfectiousness - time_to_hospital_admission
-    time_infectiousness_after_admission <- pmax(0,time_infectiousness_after_admission_unltd)
+    time_infectious_after_admission_unltd <- time_to_not_infectious - time_to_hospital_admission
+    time_infectious_after_admission <- pmax(0,time_infectious_after_admission_unltd)
     
+    # time_infectious_after_admission_unltd <- time_to_not_infectious - time_to_hospital_admission
+    # time_infectious_after_admission <- pmax(0,time_infectious_after_admission_unltd)
+    
+    
+
       # 1b. calculate this time assuming a long infectious period for hosp cases
       # time_infectiousness_after_admission_unltd_long <- time_to_lossofinfectiousness_long - time_to_hospital_admission
       # time_infectiousness_after_admission_long <- pmax(0,time_infectiousness_after_admission_unltd_long)
@@ -522,7 +477,9 @@ communityinfections_infectious_in_hospital <- function(num_samples, duration_typ
       
     
     ## 2a. calcualte number of days infectious within the hospital 
-    days_infectious_in_hosp <- pmin(hospital_duration, time_infectiousness_after_admission)
+     days_infectious_in_hosp <- pmin(p$hospital_duration, time_infectious_after_admission)
+    
+    # days_infectious_in_hosp <- pmin(hospital_duration, time_infectious_after_admission)
     days_infectious_in_hosp_positive <- days_infectious_in_hosp[days_infectious_in_hosp>0]
     
       # 2b. now under the assumption of a long duration of infectiousness
@@ -534,8 +491,11 @@ communityinfections_infectious_in_hospital <- function(num_samples, duration_typ
       # number_days_infectious_in_hospital_positive_hosp <- number_days_infectious_in_hospital_hosp[number_days_infectious_in_hospital_hosp>0]
       
     ## 3a. calcualte statistics
-    prob_infectious_in_hospital <- sum(days_infectious_in_hosp>0) / num_samples
-    prop_infectious_days_in_hospital <- sum(days_infectious_in_hosp) / sum(infectious_duration)
+     prob_infectious_in_hospital <- sum(days_infectious_in_hosp>0) / p$num_samples
+    
+    # prob_infectious_in_hospital <- sum(days_infectious_in_hosp>0) / num_samples
+     prop_infectious_days_in_hospital <- sum(days_infectious_in_hosp) / sum(p$infectious_duration)
+    # prop_infectious_days_in_hospital <- sum(days_infectious_in_hosp) / sum(infectious_duration)
     
       # 3b. and for long duration infectious
       # prob_infectious_in_hospital_long <- sum(number_days_infectious_in_hospital_long>0) / num_samples
@@ -583,7 +543,7 @@ communityinfections_infectious_in_hospital <- function(num_samples, duration_typ
    # print(p)
     
     # Output 
-    cat(output_message, "\n") 
+    cat(p$output_message, "\n") 
     cat("Prob of hospital case being infectious = ", round(prob_infectious_in_hospital,3), "\n") 
     cat("Proportion of days spent infectious in hosp = ", round(prop_infectious_days_in_hospital,3), "\n\n") 
     
@@ -617,5 +577,5 @@ communityinfections_infectious_in_hospital <- function(num_samples, duration_typ
     # } else if(duration_type == "indpt"){
     #   return(list("infectious_days_hosp" = id_ret$indpt, "prop_days" = pd_ret$indpt, "inf_total" = inf_duration$indpt))
     # }
-    return(list("infectious_days_hosp" = days_infectious_in_hosp, "inf_total" = infectious_duration))
+    return(list("infectious_days_hosp" = days_infectious_in_hosp, "inf_total" = p$infectious_duration))
 } 
