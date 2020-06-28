@@ -2,9 +2,9 @@
 
 library(rriskDistributions)
 
-readParameters <- function(duration_type){
+readParameters <- function(duration_type, num_samples){
     
-    num_samples <- 50000
+    num_samples <- num_samples
     
     # estimates of hospital stay non covid
     length_of_stay_mean = 4
@@ -62,11 +62,17 @@ readParameters <- function(duration_type){
       output_message <- "Assuming hospitalised cases are as estimated in van Kampman"
     }
     
-    ## Assuming that infected at hospital but not severely enough 
-    ## to cause increase in length of stay
+    
     
     duration_hospital_stay <- rgamma(num_samples, scale = length_of_stay_mean/length_of_stay_k, 
                                      shape = length_of_stay_k)
+    
+    
+    # Probabilities of outcomes
+    
+    ProbCovidHosp <- 0.01 # probability of hospitalisation with covid
+    ProbOtherHosp <- 0.0001 #probability of hosptalisation for any non-covid during covid infection
+      
     
     outlist <- list("infectious_duration" = infectious_duration, 
                     "latent_duration" = latent_duration, 
@@ -75,7 +81,9 @@ readParameters <- function(duration_type){
                   "hospital_duration" = hospital_duration, 
                   "duration_hospital_stay" = duration_hospital_stay, 
                   "output_message" = output_message,
-                  "num_samples" = num_samples)
+                  "num_samples" = num_samples,
+                  "ProbCovidHosp" = ProbCovidHosp,
+                  "ProbOtherHosp" = ProbOtherHosp)
                     
     return(outlist)
 }
