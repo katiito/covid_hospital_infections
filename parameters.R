@@ -2,9 +2,9 @@
 
 library(rriskDistributions)
 
-readParameters <- function(duration_type, num_samples){
+readParameters <- function(duration_type = "indpt"){
     
-    num_samples <- num_samples
+    num_samples <- 10000
     
     # estimates of hospital stay non covid
     length_of_stay_mean = 4
