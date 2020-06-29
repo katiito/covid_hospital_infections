@@ -118,6 +118,7 @@ patientInfectiousness <- function(){
           p1 <- ggplot(data = days_infectious, aes(x = route, y = days))  + 
                   geom_violin() + 
                   theme(axis.text.x = element_text(angle = 70, hjust=1)) +
+                  scale_x_discrete(name ="") + 
                   ggtitle("Infectious days in setting")
           
           p2 <- ggplot(data = frac_hosp_days, aes(x = route, y = proportion))  + 
@@ -145,7 +146,17 @@ patientInfectiousness <- function(){
           
           
           
-         grid.arrange(p1,p2,p3,p4, nrow = 2)
+         P <- grid.arrange(p1,p2,p3,p4, nrow = 2)
+         todaysdate <- format(Sys.Date(), "%Y%m%d")
+         
+         ggsave(
+           paste("plotInfectiousness_", todaysdate, ".pdf", sep=""),
+           plot = P,
+           width = 11,
+           height = 8.5,
+           units = "in",
+           dpi = 300)
+         
         
 }
 
@@ -170,7 +181,7 @@ hospitalinfections <- function(duration_type){
   
   # Output 
   cat(p$output_message, "\n") 
-  cat("Proportion of days spent infectious in hosp = ", round(prop_days_inf_in_hosp,3), "\n\n") 
+  cat("Hosp. Acquired (no re-admittance): Proportion of days spent infectious in hosp = ", round(prop_days_inf_in_hosp,3), "\n\n") 
   return(list("infectious_days_hosp" = days_infectious_in_hosp, "inf_total" = p$infectious_duration))
 
 }
@@ -207,7 +218,7 @@ hospitalinfections_readmitted <- function(duration_type, hosp_speed){
   # Output 
   
   cat(p$output_message, "\n") 
-  cat("Proportion of days spent infectious in hosp = ", round(prop_days_inf_in_hosp,3), "\n\n")
+  cat("Hosp. acquired (readmitted): Proportion of days spent infectious in hosp = ", round(prop_days_inf_in_hosp,3), "\n\n")
   return(list("infectious_days_hosp" = days_infectious_in_hosp, "inf_total" = p$infectious_duration))
   
 }
@@ -231,7 +242,7 @@ communityinfections_goto_hospital <- function(duration_type){
     
     # Output 
     cat(p$output_message, "\n") 
-    cat("Proportion of days spent infectious in hosp = ", round(prop_infectious_days_in_hospital,3), "\n\n") 
+    cat("Comm. Acquired (hospitalised): Proportion of days spent infectious in hosp = ", round(prop_infectious_days_in_hospital,3), "\n\n") 
     return(list("infectious_days_hosp" = days_infectious_in_hosp, "inf_total" = p$infectious_duration))
 } 
 
@@ -245,6 +256,6 @@ communityinfections_stayin_community <- function(duration_type){
   
   # Output 
   cat(p$output_message, "\n") 
-  cat("Proportion of days spent infectious in hosp = ", round(prop_infectious_days_in_hospital,3), "\n\n") 
+  cat("Comm. Acquired (non-hospitalised): Proportion of days spent infectious in hosp = ", round(prop_infectious_days_in_hospital,3), "\n\n") 
   return(list("infectious_days_hosp" = days_infectious_in_hosp, "inf_total" = p$infectious_duration))
 } 

@@ -6,9 +6,22 @@ readParameters <- function(duration_type = "indpt"){
     
     num_samples <- 10000
     
+    ############## PLACEHOLDER ESTIMATES ####################################
     # estimates of hospital stay non covid
+    # THESE NEED TO BE ESTIMATED PROPERLY (although won't have much of an effect) 
     length_of_stay_mean = 4
     length_of_stay_k = 10
+    
+    # Probabilities of outcomes
+    # THESE NEED TO BE ESTIMATED PROPERLY 
+    ProbCovidHosp <- 0.01 # probability of hospitalisation with covid
+    ProbOtherHosp <- 0.0001 #probability of hosptalisation for any non-covid during covid infection
+    
+    # delay between onset and hospitalisation due to covid
+    # COULD USE CO-CIN DATA FOR THIS - BUT ARE THESE ACCURATE?
+    hospital_delayfromonset_mean = 7
+    hospital_delayfromonset_k = 7
+    ########################################################################
     
     # estimates taken from Davies et al. https://www.medrxiv.org/content/10.1101/2020.04.01.20049908v1
     latent_duration_mean = 4
@@ -22,15 +35,13 @@ readParameters <- function(duration_type = "indpt"){
     clinical_duration_mean = 3.5
     clinical_duration_k = 4
     
-    # delay between onset and hospitalisation due to covid
-    hospital_delayfromonset_mean = 7
-    hospital_delayfromonset_k = 7
     
     # covid-specific length of stay
     hospital_duration_mean = 7
     hospital_duration_k = 7
     
-    # Fitting a Gamma Distribution to the van Kampen hospital study
+   
+    # Fitting a Gamma Distribution to the van Kampen hospital study (duration of infectiousness)
     # https://www.medrxiv.org/content/10.1101/2020.06.08.20125310v1.full.pdf
     g_out <- get.gamma.par(p = c(0.025, 0.5, 0.975), q = c(5, 8, 11),
                            show.output = FALSE, plot = FALSE)
@@ -68,11 +79,7 @@ readParameters <- function(duration_type = "indpt"){
                                      shape = length_of_stay_k)
     
     
-    # Probabilities of outcomes
     
-    ProbCovidHosp <- 0.01 # probability of hospitalisation with covid
-    ProbOtherHosp <- 0.0001 #probability of hosptalisation for any non-covid during covid infection
-      
     
     outlist <- list("infectious_duration" = infectious_duration, 
                     "latent_duration" = latent_duration, 
