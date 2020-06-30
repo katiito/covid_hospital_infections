@@ -2,22 +2,23 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(gridExtra)
+source("parameters.R")
 
-
-patientInfectiousness <- function(){
+patientInfectiousness <- function(hosp_detection = "slow"){
+          
           
           # num_samples <- 10000
-          p <- readParameters()
+          p <- readParameters(duration = "indpt", hosp_speed = hosp_detection)
         # run_hospital_analysis <- function(){
           
           # CAs only infecting the community
-          comm2comm <- communityinfections_stayin_community(duration = "indpt")
+          comm2comm <- communityinfections_stayin_community(duration = "indpt", hosp_speed = hosp_detection)
           # CAs infecting the hospital and community
-          comm2hosp <- communityinfections_goto_hospital(duration = "hosp")
+          comm2hosp <- communityinfections_goto_hospital(duration = "hosp", hosp_speed = hosp_detection)
           # HAs infecting the hospital and community
-          hosp2comm <- hospitalinfections(duration = "indpt") # OK
+          hosp2comm <- hospitalinfections(duration = "indpt", hosp_speed = hosp_detection) # OK
           # HAs infecting the hospital, community and hospital on readmission for covid
-          hosp2hospReadmitted <- hospitalinfections_readmitted(duration = "hosp", hosp_speed = "fast")
+          hosp2hospReadmitted <- hospitalinfections_readmitted(duration = "hosp", hosp_speed = hosp_detection)
           # hosp2hospReadmitted_notcovid <- ######
           
           # 1. number days a CA spends in community assuming stays in comm  NONHOSP DURATION
@@ -56,29 +57,33 @@ patientInfectiousness <- function(){
           ## Relative Transmissions
           # how infectious is a CA in hospital relative to in the community?
           
-          # how infectious is a CA in community relative to a HA in community? weighting by prob of being there
+          # how infectious is a CA in community relative to a HA in community? weighting by prob of route
           
           
-          probCovidHosp <- p$ProbCovidHosp/(1 + p$ProbOtherHosp)
+          probCovidHospCA <- p$ProbCovidHosp/(1 + p$ProbOtherHosp)
           probNonCovidHosp <- p$ProbOtherHosp/(1 + p$ProbOtherHosp)
           
-          CA_infectiousin_comm <- probCovidHosp*CAcomm_hosp + 
-                                    (1-probCovidHosp-probNonCovidHosp)*CAcomm_comm +
+          probCovidHospHA <- p$ProbCovidHosp_readm/(1 + p$ProbOtherHosp)
+          
+          
+          
+          CA_infectiousin_comm <- probCovidHospCA*CAcomm_hosp + 
+                                    (1-probCovidHospCA-probNonCovidHosp)*CAcomm_comm +
                                     probNonCovidHosp*CAcomm_nchosp
-          HA_infectiousin_comm <- probCovidHosp*HAcomm_hosp + 
-                                    (1-probCovidHosp-probNonCovidHosp)*HAcomm_comm + 
+          HA_infectiousin_comm <- probCovidHospHA*HAcomm_hosp + 
+                                    (1-probCovidHospHA-probNonCovidHosp)*HAcomm_comm + 
                                     probNonCovidHosp*HAcomm_nchosp
           
           # RelativeCAvsHA_community <- CA_infectiousin_comm / HA_infectiousin_comm
           # RelativeHAvsCA_community <- HA_infectiousin_comm / CA_infectiousin_comm
                                     
-          # how infectious is a CA in community relative to a HA in community? weighting by prob of being there
+          # how infectious is a CA in hosp relative to a HA in community? weighting by prob of route 
             
           probCovidHospCA <- p$ProbCovidHosp/(p$ProbOtherHosp + p$ProbCovidHosp)
           
           CA_infectiousin_hosp <- probCovidHospCA*CAhosp_hosp + (1-probCovidHospCA)*CAhosp_nchosp
-          HA_infectiousin_hosp <- probCovidHosp*HAhosp_hosp + 
-                                         (1-probCovidHosp-probNonCovidHosp)*HAhosp_comm + 
+          HA_infectiousin_hosp <- probCovidHospHA*HAhosp_hosp + 
+                                         (1-probCovidHospHA-probNonCovidHosp)*HAhosp_comm + 
                                         probNonCovidHosp*HAhosp_nchosp
           
           
@@ -150,7 +155,7 @@ patientInfectiousness <- function(){
          todaysdate <- format(Sys.Date(), "%Y%m%d")
          
          ggsave(
-           paste("plotInfectiousness_", todaysdate, ".pdf", sep=""),
+           paste("plotInfectiousness_detect_",hosp_detection, "_", todaysdate, ".pdf", sep=""),
            plot = P,
            width = 11,
            height = 8.5,
@@ -161,10 +166,10 @@ patientInfectiousness <- function(){
 }
 
 
-hospitalinfections <- function(duration_type){
+hospitalinfections <- function(duration_type, hosp_speed){
   
   
-  p <- readParameters(duration_type)
+  p <- readParameters(duration_type, hosp_speed)
   
   # infection at any point during los -relative to hospital admission
   
@@ -197,7 +202,7 @@ hospitalinfections_readmitted <- function(duration_type, hosp_speed){
   # assuming severe infection are readmitted to hosp on onset symptoms / normal time
   if(hosp_speed=="fast"){
     time_until_readmission <- time_of_hosp_infection + p$latent_duration + p$preclinical_duration
-  } else if(hosp_speed=="normal"){
+  } else if(hosp_speed=="slow"){
     time_until_readmission <- time_of_hosp_infection + p$latent_duration + p$preclinical_duration + p$hospital_delayfromonset
     
   }
@@ -224,7 +229,7 @@ hospitalinfections_readmitted <- function(duration_type, hosp_speed){
 }
 
 
-communityinfections_goto_hospital <- function(duration_type){
+communityinfections_goto_hospital <- function(duration_type,hosp_speed){
     
     p <- readParameters(duration_type)
    
@@ -246,7 +251,7 @@ communityinfections_goto_hospital <- function(duration_type){
     return(list("infectious_days_hosp" = days_infectious_in_hosp, "inf_total" = p$infectious_duration))
 } 
 
-communityinfections_stayin_community <- function(duration_type){
+communityinfections_stayin_community <- function(duration_type, hosp_speed){
   
   p <- readParameters(duration_type)
   days_infectious_in_hosp <- replicate(p$num_samples, 0) 

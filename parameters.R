@@ -2,21 +2,26 @@
 
 library(rriskDistributions)
 
-readParameters <- function(duration_type = "indpt"){
+readParameters <- function(duration_type = "indpt", hosp_speed = "fast"){
     
     num_samples <- 10000
     
     ############## PLACEHOLDER ESTIMATES ####################################
     # estimates of hospital stay non covid
-    # THESE NEED TO BE ESTIMATED PROPERLY (although won't have much of an effect) 
+    # THESE NEED TO BE ESTIMATED PROPERLY 
     length_of_stay_mean = 4
-    length_of_stay_k = 10
+    length_of_stay_k = 0.6
     
     # Probabilities of outcomes
     # THESE NEED TO BE ESTIMATED PROPERLY
     ProbCovidHosp <- 0.01 # probability of hospitalisation with covid
     ProbOtherHosp <- 0.0001 #probability of hosptalisation for any non-covid during covid infection
     
+    if(hosp_speed=="fast")
+        ProbCovidHosp_readm <- 0.5 #probability of hosp is prob of having symptoms
+    else if(hosp_speed=="slow"){
+      ProbCovidHosp_readm <-  ProbCovidHosp #probability of hosp is same as if not in hosp
+    }
     # delay between onset and hospitalisation due to covid
     # COULD USE CO-CIN DATA FOR THIS - BUT ARE THESE ACCURATE?
     hospital_delayfromonset_mean = 7
@@ -75,8 +80,10 @@ readParameters <- function(duration_type = "indpt"){
     
     
     
-    duration_hospital_stay <- rgamma(num_samples, scale = length_of_stay_mean/length_of_stay_k, 
+    duration_hospital_stay <- rgamma(num_samples, scale = length_of_stay_mean/length_of_stay_k,
                                      shape = length_of_stay_k)
+    
+    
     
     
     
@@ -90,7 +97,8 @@ readParameters <- function(duration_type = "indpt"){
                   "output_message" = output_message,
                   "num_samples" = num_samples,
                   "ProbCovidHosp" = ProbCovidHosp,
-                  "ProbOtherHosp" = ProbOtherHosp)
+                  "ProbOtherHosp" = ProbOtherHosp,
+                  "ProbCovidHosp_readm" = ProbCovidHosp_readm)
                     
     return(outlist)
 }
