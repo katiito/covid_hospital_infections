@@ -3,14 +3,25 @@
 To run the R function, type:
 
 ```R
-hospital_infectious()
+source("patientInfectiousness.R")
+patientInfectiousness(hosp_detection) 
 ```
-
+where hosp_detection is either "fast" or "slow" depending on whether the readmittance of hosp patients is at onset of symptoms (fast) or at normal hospitalisation time (slow)
 Dependencies: The R packages ggplot2, dplyr, rriskDistributions
 
+All parameters provided in:
+
+```R
+parameters.R
+```
+
 Calculate 
-1) the fraction of community-acquired infections that are still infectious if they go to hospital. 
-2) the proportion of time that hospitalised patients are infectious within the hospital
+1) infectious days for each route of infection in each setting
+2) the proportion of time that route of transmission spends in hospital
+3) average numbe rof numbers across all routes for a CA or HA in both community and hospital
 
-Calculate 1) and 2) assuming a) the infectious period is independent of whether individauls are hospitalised or b) that hospitalised patients are in the top 95% of infectious duration, c) that infectiousness duration is determined by van Kampen et al. (2020) https://www.medrxiv.org/content/10.1101/2020.06.08.20125310v1.full.pdf
+Assumptions:
 
+1. Infectious period is dependent on whether cases are hospitalised.
+2. Hospitalised cases are readmitted quickly or slower depending on detection (see above)
+3. Average infectiousness of community acquired case in commmunity/hosp is calculated as weighted average of the routes of CA case being in community/hosp (same for HA)
