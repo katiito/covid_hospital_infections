@@ -19,6 +19,10 @@ patientInfectiousness <- function(hosp_detection = "slow"){
           hosp2comm <- hospitalinfections(duration = "indpt", hosp_speed = hosp_detection) # OK
           # HAs infecting the hospital, community and hospital on readmission for covid
           hosp2hospReadmitted <- hospitalinfections_readmitted(duration = "hosp", hosp_speed = hosp_detection)
+          
+          # UPDATE WITH stratification - those sent home and those not sent home
+          
+          hosp2hospReadmitted <- hospitalinfections_readmitted(duration = "hosp", hosp_speed = hosp_detection)
           # hosp2hospReadmitted_notcovid <- ######
           
           # 1. number days a CA spends in community assuming stays in comm  NONHOSP DURATION
