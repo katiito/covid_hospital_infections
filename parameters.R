@@ -13,7 +13,7 @@ readParameters <- function(duration_type = "indpt"){
     length_of_stay_k = 10
     
     # Probabilities of outcomes
-    # THESE NEED TO BE ESTIMATED PROPERLY 
+    # THESE NEED TO BE ESTIMATED PROPERLY
     ProbCovidHosp <- 0.01 # probability of hospitalisation with covid
     ProbOtherHosp <- 0.0001 #probability of hosptalisation for any non-covid during covid infection
     
