@@ -111,8 +111,10 @@ patientInfectiousness <- function(hosp_detection = "slow"){
                                       "CA hospitalised for non-covid HOSP" = CAhosp_nchosp,
                                       "HA non-hospitalised COMM" = HAcomm_comm,
                                       "HA non-hospitalised HOSP" = HAhosp_comm,
-                                      "HA rehospitalised for covid COMM" = HAcomm_hosp,
-                                      "HA rehospitalised for covid HOSP" = HAhosp_hosp,
+                                      "HA rehospitalised for covid sev COMM" = HAcomm_hosp_severe,
+                                      "HA rehospitalised for covid sev HOSP" = HAhosp_hosp_severe,
+                                      "HA rehospitalised for covid mild COMM" = HAcomm_hosp_nonsevere,
+                                      "HA rehospitalised for covid mild HOSP" = HAhosp_hosp_nonsevere,
                                       "HA rehospitalised for non-covid COMM" = HAcomm_nchosp,
                                       "HA rehospitalised for non-covid HOSP" = HAhosp_nchosp) %>%
                       pivot_longer(everything(), names_to = "route", values_to = "days")
@@ -215,27 +217,34 @@ hospitalinfections_readmitted <- function(duration_type, hosp_speed){
   # assuming severe infection are readmitted to hosp on onset symptoms / normal time
   if(hosp_speed=="fast"){
     time_until_readmission <- time_of_hosp_infection + p$latent_duration + p$preclinical_duration
+    
   } else if(hosp_speed=="slow"){
     time_until_readmission <- time_of_hosp_infection + p$latent_duration + p$preclinical_duration + p$hospital_delayfromonset
-    
+    scaling_factor_for_mild_cases <- 0
   }
   time_until_discharge <- pmin(time_until_readmission, p$duration_hospital_stay)
   time_until_discharge_second <- time_until_readmission + p$hospital_duration
   
+  
+  if(duration_type=="indpt" & hosp_speed=="slow"){
+     scaling_factor_for_mild_cases <- 0
+  }else{
+    scaling_factor_for_mild_cases <- 1
+  }
+  
     # calculate proportion days of hospital-acquired spend in hosp based on independent distribution
     time_to_not_infectious <- time_to_infectious + p$infectious_duration
     days_infectious_in_hosp_first <- pmax(0, time_until_discharge - time_to_infectious) - pmax(0, time_until_discharge - time_to_not_infectious) 
-    days_infectious_in_hosp_second <- pmax(0, pmin(time_until_discharge_second, time_to_not_infectious) - pmax(time_until_readmission, time_to_infectious) )
+    days_infectious_in_hosp_second <- scaling_factor_for_mild_cases * (pmax(0, pmin(time_until_discharge_second, time_to_not_infectious) - pmax(time_until_readmission, time_to_infectious)))
     days_infectious_in_hosp <- days_infectious_in_hosp_first + days_infectious_in_hosp_second
     days_infectious_in_hosp_positive <- days_infectious_in_hosp[days_infectious_in_hosp>0]
     
   
-    # if discharge happens before readmission
-    continue_stay <- time_until_readmission < p$duration_hospital_stay
-    # then non severe cases will not be readmitted
-    if(duration_type=="indpt"){
-      days_infectious_in_hosp <- continue_stay * days_infectious_in_hosp
-    }
+    # # if discharge happens before readmission
+    # continue_stay <- time_until_readmission < p$duration_hospital_stay
+    # cat(sum(continue_stay)/length(continue_stay))
+    # # mild cases will not be readmitted if
+     
     prop_days_inf_in_hosp <- sum(days_infectious_in_hosp) / sum(p$infectious_duration)
   
   # Output 
