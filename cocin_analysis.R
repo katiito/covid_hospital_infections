@@ -18,4 +18,10 @@ cocindata <- cocindata_all %>%
   mutate(outcome_date=as.numeric(as.Date(outcome_date, format = "%Y-%m-%d"))) 
   
 cocindata_collapse <- 
-  cocindata[1:16,] %>% group_by(subjid) %>% summarise_all(funs(if(all(is.na(.))) NA else sum(., na.rm = TRUE)))
+  cocindata %>% group_by(subjid) %>% summarise_all(funs(if(all(is.na(.))) NA else sum(., na.rm = TRUE)))
+
+cocindata_test <- cocindata_all %>%
+  select(subjid,  "transfer_name" = siteid)
+  
+cocin_facility <- 
+  cocindata_test %>% group_by(subjid) %>% summarise_all(funs(paste(., collapse="")))

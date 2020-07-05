@@ -17,12 +17,16 @@ patientInfectiousness <- function(hosp_detection = "slow"){
           comm2hosp <- communityinfections_goto_hospital(duration = "hosp", hosp_speed = hosp_detection)
           # HAs infecting the hospital and community
           hosp2comm <- hospitalinfections(duration = "indpt", hosp_speed = hosp_detection) # OK
-          # HAs infecting the hospital, community and hospital on readmission for covid
-          hosp2hospReadmitted <- hospitalinfections_readmitted(duration = "hosp", hosp_speed = hosp_detection)
+          # HAs infecting the hospital, community and hospital on readmission for covid 
+          # (severe cases that would usually be hospitalised)
+          hosp2hospReadmitted_severe <- hospitalinfections_readmitted(duration = "hosp", hosp_speed = hosp_detection)
+          
+          # HAs infecting the hospital, community and hospital on readmission for covid (but are only hospitalised because they are already on ward)
+          hosp2hospReadmitted_nonsevere <- hospitalinfections_readmitted(duration = "indpt", hosp_speed = hosp_detection)
           
           # UPDATE WITH stratification - those sent home and those not sent home
           
-          hosp2hospReadmitted <- hospitalinfections_readmitted(duration = "hosp", hosp_speed = hosp_detection)
+          
           # hosp2hospReadmitted_notcovid <- ######
           
           # 1. number days a CA spends in community assuming stays in comm  NONHOSP DURATION
@@ -37,7 +41,7 @@ patientInfectiousness <- function(hosp_detection = "slow"){
           # 3. number of days a CA spends in community or hosp assuming goes to hosp for non-covid NONHOSP DURATION
         #### ISSUE
           
-          CAcomm_nchosp <- runif(num_samples, min = replicate(num_samples,0), max = comm2comm$inf_total) ### could update this with the comm2comm 
+          CAcomm_nchosp <- runif(p$num_samples, min = replicate(p$num_samples,0), max = comm2comm$inf_total) ### could update this with the comm2comm 
           CAhosp_nchosp <-  comm2comm$inf_total - CAcomm_nchosp ### could update this with the comm2comm 
           CAnchosp <- CAhosp_nchosp / (CAhosp_nchosp + CAcomm_nchosp)
           
@@ -47,10 +51,15 @@ patientInfectiousness <- function(hosp_detection = "slow"){
           HAcomm <- HAhosp_comm / (HAhosp_comm + HAcomm_comm)
           
           
-          # 5. number days a HA spends in community or hospital given readmittance to hosp for covid
-          HAhosp_hosp <- hosp2hospReadmitted$infectious_days_hosp
-          HAcomm_hosp <- hosp2hospReadmitted$inf_total - HAhosp_hosp
-          HAhosp <- HAhosp_hosp / (HAhosp_hosp + HAcomm_hosp)
+          # 5. number days a HA spends in community or hospital given readmittance to hosp for severe covid
+          HAhosp_hosp_severe <- hosp2hospReadmitted_severe$infectious_days_hosp
+          HAcomm_hosp_severe <- hosp2hospReadmitted_severe$inf_total - HAhosp_hosp_severe
+          HAhosp_severe <- HAhosp_hosp_severe / (HAhosp_hosp_severe + HAcomm_hosp_severe)
+          
+          # 5. number days a HA spends in community or hospital given readmittance to hosp for non-severe covid
+          HAhosp_hosp_nonsevere <- hosp2hospReadmitted_nonsevere$infectious_days_hosp
+          HAcomm_hosp_nonsevere <- hosp2hospReadmitted_nonsevere$inf_total - HAhosp_hosp_nonsevere
+          HAhosp_nonsevere <- HAhosp_hosp_nonsevere / (HAhosp_hosp_nonsevere + HAcomm_hosp_nonsevere)
           
           
           # 6. number days a HA spends in community or hospital given readmittance to hosp for noncovid NONHOSP DURATION
@@ -198,7 +207,7 @@ hospitalinfections <- function(duration_type, hosp_speed){
 
 hospitalinfections_readmitted <- function(duration_type, hosp_speed){
   
-  p <- readParameters(duration_type)
+   p <- readParameters(duration_type)
   
    time_of_hosp_infection <- runif(p$num_samples, min = replicate(p$num_samples,0), max = p$duration_hospital_stay)
    time_to_infectious <- time_of_hosp_infection + p$latent_duration
@@ -213,16 +222,21 @@ hospitalinfections_readmitted <- function(duration_type, hosp_speed){
   time_until_discharge <- pmin(time_until_readmission, p$duration_hospital_stay)
   time_until_discharge_second <- time_until_readmission + p$hospital_duration
   
+    # calculate proportion days of hospital-acquired spend in hosp based on independent distribution
+    time_to_not_infectious <- time_to_infectious + p$infectious_duration
+    days_infectious_in_hosp_first <- pmax(0, time_until_discharge - time_to_infectious) - pmax(0, time_until_discharge - time_to_not_infectious) 
+    days_infectious_in_hosp_second <- pmax(0, pmin(time_until_discharge_second, time_to_not_infectious) - pmax(time_until_readmission, time_to_infectious) )
+    days_infectious_in_hosp <- days_infectious_in_hosp_first + days_infectious_in_hosp_second
+    days_infectious_in_hosp_positive <- days_infectious_in_hosp[days_infectious_in_hosp>0]
+    
   
-  # calculate proportion days of hospital-acquired spend in hosp based on independent distribution
-  time_to_not_infectious <- time_to_infectious + p$infectious_duration
-  days_infectious_in_hosp_first <- pmax(0, time_until_discharge - time_to_infectious) - pmax(0, time_until_discharge - time_to_not_infectious) 
-  days_infectious_in_hosp_second <- pmax(0, pmin(time_until_discharge_second, time_to_not_infectious) - pmax(time_until_readmission, time_to_infectious) )
-  days_infectious_in_hosp <- days_infectious_in_hosp_first + days_infectious_in_hosp_second
-  days_infectious_in_hosp_positive <- days_infectious_in_hosp[days_infectious_in_hosp>0]
-  prop_days_inf_in_hosp <- sum(days_infectious_in_hosp) / sum(p$infectious_duration)
-  
- 
+    # if discharge happens before readmission
+    continue_stay <- time_until_readmission < p$duration_hospital_stay
+    # then non severe cases will not be readmitted
+    if(duration_type=="indpt"){
+      days_infectious_in_hosp <- continue_stay * days_infectious_in_hosp
+    }
+    prop_days_inf_in_hosp <- sum(days_infectious_in_hosp) / sum(p$infectious_duration)
   
   # Output 
   
