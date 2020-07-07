@@ -51,12 +51,12 @@ patientInfectiousness <- function(hosp_detection = "slow"){
           HAcomm <- HAhosp_comm / (HAhosp_comm + HAcomm_comm)
           
           
-          # 5. number days a HA spends in community or hospital given readmittance to hosp for severe covid
+          # 5a. number days a HA spends in community or hospital given readmittance to hosp for severe covid
           HAhosp_hosp_severe <- hosp2hospReadmitted_severe$infectious_days_hosp
           HAcomm_hosp_severe <- hosp2hospReadmitted_severe$inf_total - HAhosp_hosp_severe
           HAhosp_severe <- HAhosp_hosp_severe / (HAhosp_hosp_severe + HAcomm_hosp_severe)
           
-          # 5. number days a HA spends in community or hospital given readmittance to hosp for non-severe covid
+          # 5b. number days a HA spends in community or hospital given readmittance to hosp for non-severe covid
           HAhosp_hosp_nonsevere <- hosp2hospReadmitted_nonsevere$infectious_days_hosp
           HAcomm_hosp_nonsevere <- hosp2hospReadmitted_nonsevere$inf_total - HAhosp_hosp_nonsevere
           HAhosp_nonsevere <- HAhosp_hosp_nonsevere / (HAhosp_hosp_nonsevere + HAcomm_hosp_nonsevere)
@@ -73,31 +73,48 @@ patientInfectiousness <- function(hosp_detection = "slow"){
           # how infectious is a CA in community relative to a HA in community? weighting by prob of route
           
           
-          probCovidHospCA <- p$ProbCovidHosp/(1 + p$ProbOtherHosp)
-          probNonCovidHosp <- p$ProbOtherHosp/(1 + p$ProbOtherHosp)
+          # probCovidHospCA <- p$ProbCovidHosp/(1 + p$ProbOtherHosp)
+          # probNonCovidHosp <- p$ProbOtherHosp/(1 + p$ProbOtherHosp)
+          # 
+          # probCovidHospHA <- p$ProbCovidHosp_readm/(1 + p$ProbOtherHosp)
           
-          probCovidHospHA <- p$ProbCovidHosp_readm/(1 + p$ProbOtherHosp)
           
-          
-          
-          CA_infectiousin_comm <- probCovidHospCA*CAcomm_hosp + 
-                                    (1-probCovidHospCA-probNonCovidHosp)*CAcomm_comm +
-                                    probNonCovidHosp*CAcomm_nchosp
-          HA_infectiousin_comm <- probCovidHospHA*HAcomm_hosp + 
-                                    (1-probCovidHospHA-probNonCovidHosp)*HAcomm_comm + 
-                                    probNonCovidHosp*HAcomm_nchosp
+          # Need to multiply hosp2hospReadmitted_nonsevere$probReadmission by Prob of symptoms
+          # detection_prob <- hosp2hospReadmitted_nonsevere$probReadmission * p$ProbSymptomatic
+          detection_prob <- p$ProbSymptomatic
+          # CA_infectiousin_comm <- probCovidHospCA*CAcomm_hosp + 
+          #                           (1-probCovidHospCA-probNonCovidHosp)*CAcomm_comm +
+          #                           probNonCovidHosp*CAcomm_nchosp
+          CA_infectiousin_comm <- p$ProbCovidHosp*CAcomm_hosp + 
+                                    (1-p$ProbCovidHosp) * (1-p$ProbOtherHosp) * CAcomm_comm +
+                                    (1-p$ProbCovidHosp) * p$ProbOtherHosp *CAcomm_nchosp
+          # HA_infectiousin_comm <- probCovidHospHA*HAcomm_hosp + 
+          #                           (1-probCovidHospHA-probNonCovidHosp)*HAcomm_comm + 
+          #                           probNonCovidHosp*HAcomm_nchosp
+          HA_infectiousin_comm <- (1-p$ProbCovidHosp) * detection_prob * HAcomm_hosp_nonsevere + 
+                                p$ProbCovidHosp * HAcomm_hosp_severe + 
+                               (1-p$ProbCovidHosp) * (1-detection_prob) * (1-p$ProbOtherHosp) * HAcomm_comm + 
+                                (1-p$ProbCovidHosp) * (1-detection_prob) * p$ProbOtherHosp * HAcomm_nchosp
           
           # RelativeCAvsHA_community <- CA_infectiousin_comm / HA_infectiousin_comm
           # RelativeHAvsCA_community <- HA_infectiousin_comm / CA_infectiousin_comm
                                     
           # how infectious is a CA in hosp relative to a HA in community? weighting by prob of route 
             
-          probCovidHospCA <- p$ProbCovidHosp/(p$ProbOtherHosp + p$ProbCovidHosp)
+          # probCovidHospCA <- p$ProbCovidHosp/(p$ProbOtherHosp + p$ProbCovidHosp)
+          # probCovidHospCA <- p$ProbCovidHosp/((p$ProbCovidHosp) * p$ProbOtherHosp + p$ProbCovidHosp)
           
-          CA_infectiousin_hosp <- probCovidHospCA*CAhosp_hosp + (1-probCovidHospCA)*CAhosp_nchosp
-          HA_infectiousin_hosp <- probCovidHospHA*HAhosp_hosp + 
-                                         (1-probCovidHospHA-probNonCovidHosp)*HAhosp_comm + 
-                                        probNonCovidHosp*HAhosp_nchosp
+          # CA_infectiousin_hosp <- probCovidHospCA*CAhosp_hosp + (1-probCovidHospCA)*CAhosp_nchosp
+          covid_prob_hosp_weight_CA <- p$ProbCovidHosp / (p$ProbCovidHosp + (1-p$ProbCovidHosp) * p$ProbOtherHosp)
+          CA_infectiousin_hosp <- covid_prob_hosp_weight_CA * CAhosp_hosp + 
+                                       (1 - covid_prob_hosp_weight_CA)* CAhosp_nchosp
+          # HA_infectiousin_hosp <- probCovidHospHA*HAhosp_hosp + 
+          #                                (1-probCovidHospHA-probNonCovidHosp)*HAhosp_comm + 
+          #                               probNonCovidHosp*HAhosp_nchosp
+          HA_infectiousin_hosp <- (1-p$ProbCovidHosp) * detection_prob * HAhosp_hosp_nonsevere + 
+                                      p$ProbCovidHosp * HAhosp_hosp_severe + 
+                                      (1-p$ProbCovidHosp) * (1-detection_prob) * (1-p$ProbOtherHosp) * HAhosp_comm + 
+                                      (1-p$ProbCovidHosp) * (1-detection_prob) * p$ProbOtherHosp * HAhosp_nchosp
           
           
           # RelativeCAvsHA_hospital <- CA_infectiousin_hosp / HA_infectiousin_hosp
@@ -129,7 +146,7 @@ patientInfectiousness <- function(hosp_detection = "slow"){
             days_infectious_average_comm <- bind_cols("CA in community" = CA_infectiousin_comm,
                                               "HA in community" = HA_infectiousin_comm) %>%
                       pivot_longer(everything(), names_to = "route", values_to = "days")
-            days_infectious_average_hosp <- bind_cols("CA in hospital" = CA_infectiousin_hosp,
+            days_infectious_average_hosp <- bind_cols("CA in hospital | hosp." = CA_infectiousin_hosp,
                                                       "HA in hospital" = HA_infectiousin_hosp) %>%
               pivot_longer(everything(), names_to = "route", values_to = "days")
             
@@ -220,16 +237,24 @@ hospitalinfections_readmitted <- function(duration_type, hosp_speed){
     
   } else if(hosp_speed=="slow"){
     time_until_readmission <- time_of_hosp_infection + p$latent_duration + p$preclinical_duration + p$hospital_delayfromonset
-    scaling_factor_for_mild_cases <- 0
   }
   time_until_discharge <- pmin(time_until_readmission, p$duration_hospital_stay)
   time_until_discharge_second <- time_until_readmission + p$hospital_duration
   
   
-  if(duration_type=="indpt" & hosp_speed=="slow"){
+  if(duration_type=="indpt"){
+    # if mild case and detection rate is slow, then assume there is no readmission
+    if(hosp_speed=="slow"){
      scaling_factor_for_mild_cases <- 0
+     # probReadmission <- 0
+     # if mild case and detection rate is slow, then calculate proportion readmitted readmission
+    } else{
+      scaling_factor_for_mild_cases <- 1
+      # probReadmission <- sum((time_until_readmission < p$duration_hospital_stay))/p$num_samples
+    }
   }else{
     scaling_factor_for_mild_cases <- 1
+    # probReadmission <- 1
   }
   
     # calculate proportion days of hospital-acquired spend in hosp based on independent distribution

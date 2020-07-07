@@ -16,12 +16,12 @@ readParameters <- function(duration_type = "indpt", hosp_speed = "fast"){
     # THESE NEED TO BE ESTIMATED PROPERLY
     ProbCovidHosp <- 0.01 # probability of hospitalisation with covid
     ProbOtherHosp <- 0.0001 #probability of hosptalisation for any non-covid during covid infection
-    
-    if(hosp_speed=="fast")
-        ProbCovidHosp_readm <- 0.5 #probability of hosp is prob of having symptoms
-    else if(hosp_speed=="slow"){
-      ProbCovidHosp_readm <-  ProbCovidHosp #probability of hosp is same as if not in hosp
-    }
+    ProbSymptomatic <- 0.5
+    # if(hosp_speed=="fast")
+    #     ProbCovidHosp_readm <- 0.5 #probability of hosp is prob of having symptoms
+    # else if(hosp_speed=="slow"){
+    #   ProbCovidHosp_readm <-  ProbCovidHosp #probability of hosp is same as if not in hosp
+    # }
     # delay between onset and hospitalisation due to covid
     # COULD USE CO-CIN DATA FOR THIS - BUT ARE THESE ACCURATE?
     hospital_delayfromonset_mean = 7
@@ -98,7 +98,7 @@ readParameters <- function(duration_type = "indpt", hosp_speed = "fast"){
                   "num_samples" = num_samples,
                   "ProbCovidHosp" = ProbCovidHosp,
                   "ProbOtherHosp" = ProbOtherHosp,
-                  "ProbCovidHosp_readm" = ProbCovidHosp_readm)
+                  "ProbSymptomatic" = ProbSymptomatic)
                     
     return(outlist)
 }
