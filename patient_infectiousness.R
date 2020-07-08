@@ -21,6 +21,8 @@ patientInfectiousness <- function(hosp_detection = "slow"){
           # (severe cases that would usually be hospitalised)
           hosp2hospReadmitted_severe <- hospitalinfections_readmitted(duration = "hosp", hosp_speed = hosp_detection)
           
+          
+          
           # HAs infecting the hospital, community and hospital on readmission for covid (but are only hospitalised because they are already on ward)
           hosp2hospReadmitted_nonsevere <- hospitalinfections_readmitted(duration = "indpt", hosp_speed = hosp_detection)
           
@@ -51,18 +53,31 @@ patientInfectiousness <- function(hosp_detection = "slow"){
           HAcomm <- HAhosp_comm / (HAhosp_comm + HAcomm_comm)
           
           
-          # 5a. number days a HA spends in community or hospital given readmittance to hosp for severe covid
-          HAhosp_hosp_severe <- hosp2hospReadmitted_severe$infectious_days_hosp
-          HAcomm_hosp_severe <- hosp2hospReadmitted_severe$inf_total - HAhosp_hosp_severe
-          HAhosp_severe <- HAhosp_hosp_severe / (HAhosp_hosp_severe + HAcomm_hosp_severe)
+          # 5. number days a HA spends in community or hospital given readmittance to hosp for severe covid (first sent to community)
           
-          # 5b. number days a HA spends in community or hospital given readmittance to hosp for non-severe covid
-          HAhosp_hosp_nonsevere <- hosp2hospReadmitted_nonsevere$infectious_days_hosp
-          HAcomm_hosp_nonsevere <- hosp2hospReadmitted_nonsevere$inf_total - HAhosp_hosp_nonsevere
-          HAhosp_nonsevere <- HAhosp_hosp_nonsevere / (HAhosp_hosp_nonsevere + HAcomm_hosp_nonsevere)
+          HAhosp_hosp_severe_senttocommunity <- sample(
+                        hosp2hospReadmitted_severe$infectious_days_hosp[hosp2hospReadmitted_severe$sent_back_to_community], p$num_samples, replace=TRUE)
+          
+          communitydays <- hosp2hospReadmitted_severe$inf_total - hosp2hospReadmitted_severe$infectious_days_hosp
+          HAcomm_hosp_severe_senttocommunity <- sample(communitydays[hosp2hospReadmitted_severe$sent_back_to_community], p$num_samples, replace=TRUE)
+          HAhosp_severe_senttocommunity <- HAhosp_hosp_severe_senttocommunity / (HAhosp_hosp_severe_senttocommunity + HAcomm_hosp_severe_senttocommunity)
+          
+          #### *** PROBLEM HERE *****
+          # 6. number days a HA spends in community or hospital given readmittance to hosp for severe covid (not sent back to community)
+          HAhosp_hosp_severe_remaininhosp <- sample(
+                        hosp2hospReadmitted_severe$infectious_days_hosp[!hosp2hospReadmitted_severe$sent_back_to_community], p$num_samples, replace = TRUE)
+          # HAcomm_hosp_severe <- hosp2hospReadmitted_severe$inf_total - HAhosp_hosp_severe
+          HAhosp_severe <- replicate(1, p$num_samples)
+          
+          # 7. number days a HA spends in community or hospital given readmittance to hosp for non-severe covid
+          HAhosp_hosp_nonsevere_remaininhosp <- sample(
+                        hosp2hospReadmitted_nonsevere$infectious_days_hosp[!hosp2hospReadmitted_nonsevere$sent_back_to_community], p$num_samples, replace = TRUE)
+          # HAcomm_hosp_nonsevere <- hosp2hospReadmitted_nonsevere$inf_total - HAhosp_hosp_nonsevere
+          HAhosp_nonsevere <- replicate(1, p$num_samples)
+          # HAhosp_hosp_nonsevere / (HAhosp_hosp_nonsevere + HAcomm_hosp_nonsevere)
           
           
-          # 6. number days a HA spends in community or hospital given readmittance to hosp for noncovid NONHOSP DURATION
+          # 8. number days a HA spends in community or hospital given readmittance to hosp for noncovid NONHOSP DURATION
           HAcomm_nchosp <- runif(num_samples, min = replicate(num_samples,0), max = round(HAcomm_comm, digits = 5))
           HAhosp_nchosp <- hosp2comm$inf_total - HAcomm_nchosp
           HAnchosp <- HAhosp_nchosp / (HAhosp_nchosp + HAcomm_nchosp)
@@ -121,19 +136,20 @@ patientInfectiousness <- function(hosp_detection = "slow"){
           # RelativeHAvsCA_hospital <- HA_infectiousin_hosp / CA_infectiousin_hosp 
           
           
-            days_infectious <- bind_cols("CA non-hospitalised COMM" = CAcomm_comm,
-                                      "CA hospitalised COMM" = CAcomm_hosp,
-                                      "CA hospitalised for covid HOSP" = CAhosp_hosp,
-                                      "CA hospitalised for non-covid COMM" = CAcomm_nchosp,
-                                      "CA hospitalised for non-covid HOSP" = CAhosp_nchosp,
-                                      "HA non-hospitalised COMM" = HAcomm_comm,
-                                      "HA non-hospitalised HOSP" = HAhosp_comm,
-                                      "HA rehospitalised for covid sev COMM" = HAcomm_hosp_severe,
-                                      "HA rehospitalised for covid sev HOSP" = HAhosp_hosp_severe,
-                                      "HA rehospitalised for covid mild COMM" = HAcomm_hosp_nonsevere,
-                                      "HA rehospitalised for covid mild HOSP" = HAhosp_hosp_nonsevere,
-                                      "HA rehospitalised for non-covid COMM" = HAcomm_nchosp,
-                                      "HA rehospitalised for non-covid HOSP" = HAhosp_nchosp) %>%
+            days_infectious <- bind_cols("1. CA non-hospitalised COMM" = CAcomm_comm,
+                                      "3. CA hospitalised COMM" = CAcomm_hosp,
+                                      "3. CA hospitalised for covid HOSP" = CAhosp_hosp,
+                                      "2. CA hospitalised for non-covid COMM" = CAcomm_nchosp,
+                                      "2. CA hospitalised for non-covid HOSP" = CAhosp_nchosp,
+                                      "4. HA not readmitted COMM" = HAcomm_comm,
+                                      "4. HA not readmitted HOSP" = HAhosp_comm,
+                                      "7. HA readmitted for severe covid (discharge) COMM" = HAcomm_hosp_severe_senttocommunity,
+                                      "7. HA readmitted for severe covid (discharge) HOSP" = HAhosp_hosp_severe_senttocommunity,
+                                      "8. HA readmitted for severe covid (no discharge) HOSP" = HAhosp_hosp_severe_remaininhosp,
+                                      "6. HA readmitted for mild covid (no discharge) HOSP" = HAhosp_hosp_nonsevere_remaininhosp,
+                                      "5. HA readmitted for non-covid COMM" = HAcomm_nchosp,
+                                      "5. HA readmitted for non-covid HOSP" = HAhosp_nchosp) %>%
+              
                       pivot_longer(everything(), names_to = "route", values_to = "days")
           
             frac_hosp_days <- bind_cols("CA hospitalised for covid" = CAhosp,
@@ -241,11 +257,15 @@ hospitalinfections_readmitted <- function(duration_type, hosp_speed){
   time_until_discharge <- pmin(time_until_readmission, p$duration_hospital_stay)
   time_until_discharge_second <- time_until_readmission + p$hospital_duration
   
+  # find infections that are not sent back to the community 
+  community_index <- time_until_readmission > time_until_discharge
+  
   
   if(duration_type=="indpt"){
     # if mild case and detection rate is slow, then assume there is no readmission
     if(hosp_speed=="slow"){
      scaling_factor_for_mild_cases <- 0
+     
      # probReadmission <- 0
      # if mild case and detection rate is slow, then calculate proportion readmitted readmission
     } else{
@@ -256,6 +276,8 @@ hospitalinfections_readmitted <- function(duration_type, hosp_speed){
     scaling_factor_for_mild_cases <- 1
     # probReadmission <- 1
   }
+  
+  
   
     # calculate proportion days of hospital-acquired spend in hosp based on independent distribution
     time_to_not_infectious <- time_to_infectious + p$infectious_duration
@@ -276,7 +298,8 @@ hospitalinfections_readmitted <- function(duration_type, hosp_speed){
   
   cat(p$output_message, "\n") 
   cat("Hosp. acquired (readmitted): Proportion of days spent infectious in hosp = ", round(prop_days_inf_in_hosp,3), "\n\n")
-  return(list("infectious_days_hosp" = days_infectious_in_hosp, "inf_total" = p$infectious_duration))
+  return(list("infectious_days_hosp" = days_infectious_in_hosp, "inf_total" = p$infectious_duration,
+              "sent_back_to_community" = community_index))
   
 }
 
