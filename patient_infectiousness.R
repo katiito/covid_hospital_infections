@@ -62,23 +62,23 @@ patientInfectiousness <- function(hosp_detection = "slow"){
           HAcomm_hosp_severe_senttocommunity <- sample(communitydays[hosp2hospReadmitted_severe$sent_back_to_community], p$num_samples, replace=TRUE)
           HAhosp_severe_senttocommunity <- HAhosp_hosp_severe_senttocommunity / (HAhosp_hosp_severe_senttocommunity + HAcomm_hosp_severe_senttocommunity)
           
-          #### *** PROBLEM HERE *****
+        
           # 6. number days a HA spends in community or hospital given readmittance to hosp for severe covid (not sent back to community)
           HAhosp_hosp_severe_remaininhosp <- sample(
                         hosp2hospReadmitted_severe$infectious_days_hosp[!hosp2hospReadmitted_severe$sent_back_to_community], p$num_samples, replace = TRUE)
           # HAcomm_hosp_severe <- hosp2hospReadmitted_severe$inf_total - HAhosp_hosp_severe
-          HAhosp_severe <- replicate(1, p$num_samples)
+          HAhosp_severe_remaininhosp <- replicate(p$num_samples, 1)
           
           # 7. number days a HA spends in community or hospital given readmittance to hosp for non-severe covid
           HAhosp_hosp_nonsevere_remaininhosp <- sample(
                         hosp2hospReadmitted_nonsevere$infectious_days_hosp[!hosp2hospReadmitted_nonsevere$sent_back_to_community], p$num_samples, replace = TRUE)
           # HAcomm_hosp_nonsevere <- hosp2hospReadmitted_nonsevere$inf_total - HAhosp_hosp_nonsevere
-          HAhosp_nonsevere <- replicate(1, p$num_samples)
+          HAhosp_nonsevere_remaininhosp <- replicate(p$num_samples, 1)
           # HAhosp_hosp_nonsevere / (HAhosp_hosp_nonsevere + HAcomm_hosp_nonsevere)
           
           
           # 8. number days a HA spends in community or hospital given readmittance to hosp for noncovid NONHOSP DURATION
-          HAcomm_nchosp <- runif(num_samples, min = replicate(num_samples,0), max = round(HAcomm_comm, digits = 5))
+          HAcomm_nchosp <- runif(p$num_samples, min = replicate(p$num_samples,0), max = round(HAcomm_comm, digits = 5))
           HAhosp_nchosp <- hosp2comm$inf_total - HAcomm_nchosp
           HAnchosp <- HAhosp_nchosp / (HAhosp_nchosp + HAcomm_nchosp)
           
@@ -96,21 +96,29 @@ patientInfectiousness <- function(hosp_detection = "slow"){
           
           # Need to multiply hosp2hospReadmitted_nonsevere$probReadmission by Prob of symptoms
           # detection_prob <- hosp2hospReadmitted_nonsevere$probReadmission * p$ProbSymptomatic
-          detection_prob <- p$ProbSymptomatic
-          # CA_infectiousin_comm <- probCovidHospCA*CAcomm_hosp + 
-          #                           (1-probCovidHospCA-probNonCovidHosp)*CAcomm_comm +
-          #                           probNonCovidHosp*CAcomm_nchosp
+          detection_prob_Mild <- p$ProbSymptomatic * hosp2hospReadmitted_nonsevere$prob_detect_before_discharge
+          detection_prob_Severe <-  hosp2hospReadmitted_severe$prob_detect_before_discharge
+          
+          cat("Mild case detection prob = ", detection_prob_Mild, "\n") 
+          cat("Severe case detection prob = ", detection_prob_Severe, "\n") 
+          
+          
+         
+          denominator_prob <- (1-p$ProbCovidHosp) * (1-detection_prob_Mild) + p$ProbCovidHosp * (1-detection_prob_Severe)
           CA_infectiousin_comm <- p$ProbCovidHosp*CAcomm_hosp + 
                                     (1-p$ProbCovidHosp) * (1-p$ProbOtherHosp) * CAcomm_comm +
                                     (1-p$ProbCovidHosp) * p$ProbOtherHosp *CAcomm_nchosp
-          # HA_infectiousin_comm <- probCovidHospHA*HAcomm_hosp + 
-          #                           (1-probCovidHospHA-probNonCovidHosp)*HAcomm_comm + 
-          #                           probNonCovidHosp*HAcomm_nchosp
-          HA_infectiousin_comm <- (1-p$ProbCovidHosp) * detection_prob * HAcomm_hosp_nonsevere + 
-                                p$ProbCovidHosp * HAcomm_hosp_severe + 
-                               (1-p$ProbCovidHosp) * (1-detection_prob) * (1-p$ProbOtherHosp) * HAcomm_comm + 
-                                (1-p$ProbCovidHosp) * (1-detection_prob) * p$ProbOtherHosp * HAcomm_nchosp
           
+          HA_infectiousin_comm <- (1-p$ProbCovidHosp) * (1-detection_prob_Mild) * (1-p$ProbOtherHosp) * HAcomm_comm  / denominator_prob +
+                           (1-p$ProbCovidHosp) * (1-detection_prob_Mild) * p$ProbOtherHosp * HAcomm_nchosp  / denominator_prob +
+                           p$ProbCovidHosp * (1-detection_prob_Severe) * HAcomm_hosp_severe_senttocommunity / denominator_prob
+          
+          
+          # HA_infectiousin_comm <- (1-p$ProbCovidHosp) * detection_prob * HAcomm_hosp_nonsevere + 
+          #                       p$ProbCovidHosp * HAcomm_hosp_severe + 
+          #                      (1-p$ProbCovidHosp) * (1-detection_prob) * (1-p$ProbOtherHosp) * HAcomm_comm + 
+          #                       (1-p$ProbCovidHosp) * (1-detection_prob) * p$ProbOtherHosp * HAcomm_nchosp
+          # 
           # RelativeCAvsHA_community <- CA_infectiousin_comm / HA_infectiousin_comm
           # RelativeHAvsCA_community <- HA_infectiousin_comm / CA_infectiousin_comm
                                     
@@ -121,15 +129,25 @@ patientInfectiousness <- function(hosp_detection = "slow"){
           
           # CA_infectiousin_hosp <- probCovidHospCA*CAhosp_hosp + (1-probCovidHospCA)*CAhosp_nchosp
           covid_prob_hosp_weight_CA <- p$ProbCovidHosp / (p$ProbCovidHosp + (1-p$ProbCovidHosp) * p$ProbOtherHosp)
+          
           CA_infectiousin_hosp <- covid_prob_hosp_weight_CA * CAhosp_hosp + 
                                        (1 - covid_prob_hosp_weight_CA)* CAhosp_nchosp
           # HA_infectiousin_hosp <- probCovidHospHA*HAhosp_hosp + 
           #                                (1-probCovidHospHA-probNonCovidHosp)*HAhosp_comm + 
           #                               probNonCovidHosp*HAhosp_nchosp
-          HA_infectiousin_hosp <- (1-p$ProbCovidHosp) * detection_prob * HAhosp_hosp_nonsevere + 
-                                      p$ProbCovidHosp * HAhosp_hosp_severe + 
-                                      (1-p$ProbCovidHosp) * (1-detection_prob) * (1-p$ProbOtherHosp) * HAhosp_comm + 
-                                      (1-p$ProbCovidHosp) * (1-detection_prob) * p$ProbOtherHosp * HAhosp_nchosp
+         
+          HA_infectiousin_hosp <- 
+                      (1-p$ProbCovidHosp) * (1- detection_prob_Mild) * (1 - p$ProbOtherHosp) * HAhosp_comm +
+                      (1-p$ProbCovidHosp) * (1- detection_prob_Mild) * p$ProbOtherHosp * HAhosp_nchosp +
+                      (1-p$ProbCovidHosp) * detection_prob_Mild * HAhosp_hosp_nonsevere_remaininhosp +
+                      p$ProbCovidHosp * (1 - detection_prob_Severe) * HAhosp_hosp_severe_senttocommunity +  
+                      p$ProbCovidHosp * detection_prob_Severe * HAhosp_hosp_severe_remaininhosp
+                        
+          
+           # HA_infectiousin_hosp <- (1-p$ProbCovidHosp) * detection_prob * HAhosp_hosp_nonsevere + 
+          #                             p$ProbCovidHosp * HAhosp_hosp_severe + 
+          #                             (1-p$ProbCovidHosp) * (1-detection_prob) * (1-p$ProbOtherHosp) * HAhosp_comm + 
+          #                             (1-p$ProbCovidHosp) * (1-detection_prob) * p$ProbOtherHosp * HAhosp_nchosp
           
           
           # RelativeCAvsHA_hospital <- CA_infectiousin_hosp / HA_infectiousin_hosp
@@ -149,18 +167,19 @@ patientInfectiousness <- function(hosp_detection = "slow"){
                                       "6. HA readmitted for mild covid (no discharge) HOSP" = HAhosp_hosp_nonsevere_remaininhosp,
                                       "5. HA readmitted for non-covid COMM" = HAcomm_nchosp,
                                       "5. HA readmitted for non-covid HOSP" = HAhosp_nchosp) %>%
-              
                       pivot_longer(everything(), names_to = "route", values_to = "days")
           
             frac_hosp_days <- bind_cols("CA hospitalised for covid" = CAhosp,
                                       "CA hospitalised for non-covid" = CAnchosp,
                                       "HA non-hospitalised" = HAcomm,
-                                      "HA rehospitalised for covid" = HAhosp,
-                                      "HA rehospitalised for non-covid" = HAnchosp) %>%
+                                      "HA readmitted for covid (discharge)" = HAhosp_severe_senttocommunity,
+                                      "HA readmitted for severe covid (no discharge)" = HAhosp_severe_remaininhosp,
+                                      "HA readmitted for mild covid (no discharge)" = HAhosp_nonsevere_remaininhosp, 
+                                      "HA readmitted for non-covid" = HAnchosp) %>%
                       pivot_longer(everything(), names_to = "route", values_to = "proportion")
         
             days_infectious_average_comm <- bind_cols("CA in community" = CA_infectiousin_comm,
-                                              "HA in community" = HA_infectiousin_comm) %>%
+                                              "HA in community | comm." = HA_infectiousin_comm) %>%
                       pivot_longer(everything(), names_to = "route", values_to = "days")
             days_infectious_average_hosp <- bind_cols("CA in hospital | hosp." = CA_infectiousin_hosp,
                                                       "HA in hospital" = HA_infectiousin_hosp) %>%
@@ -174,22 +193,23 @@ patientInfectiousness <- function(hosp_detection = "slow"){
                   scale_x_discrete(name ="") + 
                   ggtitle("Infectious days in setting")
           
-          p2 <- ggplot(data = frac_hosp_days, aes(x = route, y = proportion))  + 
-            geom_violin() + 
-            theme(axis.text.x = element_text(angle = 70, hjust=1)) + 
-            scale_x_discrete(name ="") + 
+          p2 <- ggplot(data = frac_hosp_days, aes(x = route, y = proportion))  +
+            geom_violin() +
+            theme(axis.text.x = element_text(angle = 70, hjust=1)) +
+            scale_x_discrete(name ="") +
             ggtitle("Fraction infectious days in hospital")
           
           p3 <- ggplot(data = days_infectious_average_comm, aes(days, after_stat(density)))  + 
             geom_histogram(binwidth=1) + 
             facet_wrap(~route, ncol=1) +
+            xlim(-0.5,15) + 
             # theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
             # scale_x_discrete(name ="") + 
             ggtitle("Average infectious days")
           
           p4 <- ggplot(data = days_infectious_average_hosp, aes(days, after_stat(density)))  + 
             geom_histogram() +
-            # xlim(0,2) + 
+            xlim(-0.5,15) + 
             # ylim(0,1.5) + 
             facet_wrap(~route, ncol=1) +
             # theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
@@ -257,33 +277,35 @@ hospitalinfections_readmitted <- function(duration_type, hosp_speed){
   time_until_discharge <- pmin(time_until_readmission, p$duration_hospital_stay)
   time_until_discharge_second <- time_until_readmission + p$hospital_duration
   
-  # find infections that are not sent back to the community 
+  # find infections that are sent back to the community
   community_index <- time_until_readmission > time_until_discharge
-  
+  prob_detect_before_discharge <- 1 - sum(community_index)/p$num_samples
   
   if(duration_type=="indpt"){
-    # if mild case and detection rate is slow, then assume there is no readmission
-    if(hosp_speed=="slow"){
-     scaling_factor_for_mild_cases <- 0
-     
+    # if mild case then assume there is no readmission if case trasnferred to community
+    scaling_factor_for_mild_cases <- !community_index
+    # if(hosp_speed=="slow"){
+      
+     # community_index <- replicate(TRUE, p$num_samples)
      # probReadmission <- 0
      # if mild case and detection rate is slow, then calculate proportion readmitted readmission
     } else{
-      scaling_factor_for_mild_cases <- 1
+       scaling_factor_for_mild_cases <- 1
       # probReadmission <- sum((time_until_readmission < p$duration_hospital_stay))/p$num_samples
     }
-  }else{
-    scaling_factor_for_mild_cases <- 1
-    # probReadmission <- 1
-  }
+  # }else{
+  #    scaling_factor_for_mild_cases <- 1
+  #    # probReadmission <- 1
+  # }
   
   
   
     # calculate proportion days of hospital-acquired spend in hosp based on independent distribution
     time_to_not_infectious <- time_to_infectious + p$infectious_duration
     days_infectious_in_hosp_first <- pmax(0, time_until_discharge - time_to_infectious) - pmax(0, time_until_discharge - time_to_not_infectious) 
-    days_infectious_in_hosp_second <- scaling_factor_for_mild_cases * (pmax(0, pmin(time_until_discharge_second, time_to_not_infectious) - pmax(time_until_readmission, time_to_infectious)))
-    days_infectious_in_hosp <- days_infectious_in_hosp_first + days_infectious_in_hosp_second
+     days_infectious_in_hosp_second <- scaling_factor_for_mild_cases * (pmax(0, pmin(time_until_discharge_second, time_to_not_infectious) - pmax(time_until_readmission, time_to_infectious)))
+      # days_infectious_in_hosp_second <-  pmax(0, pmin(time_until_discharge_second, time_to_not_infectious) - pmax(time_until_readmission, time_to_infectious))
+    days_infectious_in_hosp <- days_infectious_in_hosp_first  + days_infectious_in_hosp_second
     days_infectious_in_hosp_positive <- days_infectious_in_hosp[days_infectious_in_hosp>0]
     
   
@@ -299,7 +321,7 @@ hospitalinfections_readmitted <- function(duration_type, hosp_speed){
   cat(p$output_message, "\n") 
   cat("Hosp. acquired (readmitted): Proportion of days spent infectious in hosp = ", round(prop_days_inf_in_hosp,3), "\n\n")
   return(list("infectious_days_hosp" = days_infectious_in_hosp, "inf_total" = p$infectious_duration,
-              "sent_back_to_community" = community_index))
+              "sent_back_to_community" = community_index, "prob_detect_before_discharge" = prob_detect_before_discharge))
   
 }
 

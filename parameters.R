@@ -2,7 +2,7 @@
 
 library(rriskDistributions)
 
-readParameters <- function(duration_type = "indpt", hosp_speed = "fast"){
+readParameters <- function(duration_type = "indpt", hosp_speed = "fast", plot_dist=FALSE){
     
     num_samples <- 10000
     
@@ -85,7 +85,41 @@ readParameters <- function(duration_type = "indpt", hosp_speed = "fast"){
     
     
     
-    
+    if(plot_dist==TRUE){
+      infectious_duration_mild <- preclinical_duration + clinical_duration
+      infectious_duration_severe <- rgamma(num_samples, scale = 1/g_out["rate"], shape =  g_out["shape"])
+
+      blob <- bind_cols("latent_duration" = latent_duration,
+                        "preclinical_duration" = preclinical_duration,
+                        "clinical_duration" = clinical_duration,
+                        "hospital_delayfromonset" = hospital_delayfromonset,
+                        "hospital_duration" = hospital_duration,
+                        "infectious_duration_mild" = infectious_duration_mild,
+                        "infectious_duration_severe" = infectious_duration_severe,
+                        "noncovid_hospital_duration" =  duration_hospital_stay) %>%
+          pivot_longer(everything(), names_to = "parameter", values_to = "days")
+
+      p <- ggplot(data = blob, aes(days, after_stat(density)))  +
+        geom_histogram(binwidth=1) +
+        facet_wrap(~parameter) + 
+        xlim(-0.5,25)
+      
+      P <- grid.arrange(p)
+      todaysdate <- format(Sys.Date(), "%Y%m%d")
+      
+      ggsave(
+        paste("parameters_", todaysdate, ".pdf", sep=""),
+        plot = P,
+        width = 11,
+        height = 8.5,
+        units = "in",
+        dpi = 300)
+        # xlim(-0.5,15) +
+        # theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+        # scale_x_discrete(name ="") +
+        # ggtitle("Average infectious days")
+      }
+
     
     
     outlist <- list("infectious_duration" = infectious_duration, 
